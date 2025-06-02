@@ -1,3 +1,4 @@
+import pandas as pd
 from .product import ProductVisitor
 from .product import Product
 from date import (Date, Period, TermOrTerminationDate)
@@ -9,7 +10,7 @@ class ProductBulletCashflow(Product):
                  terminationDate : str, 
                  currency : str,
                  notional : float,
-                 longOrShort : str):
+                 longOrShort : str) -> None:
         super().__init__(Date(terminationDate), Date(terminationDate), notional, longOrShort, Currency(currency))
     
     @property
@@ -32,13 +33,12 @@ class ProductFuture(Product):
                  index : str,
                  strike : float,
                  notional : float,
-                 longOrShort : str):
+                 longOrShort : str) -> None:
         
         self.strike_ = strike
         self.effectiveDate_ = Date(effectiveDate)
         tokenized_index = index.split('-')
         self.tenor_ = tokenized_index[-1] # if this errors
-        # print('-'.join(tokenized_index), self.tenor_)
         self.index_ = IndexRegistry()._instance.get('-'.join(tokenized_index[:-1]), self.tenor_)
         self.expirationDate_ = Date(self.index_.fixingDate(self.effectiveDate_))
         self.maturityDate_ = Date(self.index_.maturityDate(self.effectiveDate_))

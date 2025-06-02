@@ -2,7 +2,7 @@ import pandas as pd
 import datetime as dt
 from typing import Any, Optional
 from abc import ABCMeta, abstractmethod
-from ..date import Date
+from date import Date
 
 ### allowed model type
 class ModelType:
@@ -42,6 +42,7 @@ class Model(metaclass=ABCMeta):
         self.modelType_ = ModelType(modelType)
         self.dataCollection_ = dataCollection
         self.buildMethodCollection_ = buildMethodCollection
+        self.subModel_ = None
         # initialize model component
         self.components = dict()
         for this_bm in self.buildMethodCollection:
@@ -54,20 +55,24 @@ class Model(metaclass=ABCMeta):
         pass
 
     @property    
-    def valueDate(self) -> Date:
+    def valueDate(self):
         return self.valueDate_
     
     @property
-    def modelType(self) -> ModelType:
-        return self.modelType_
+    def modelType(self):
+        return self.modelType_.valueStr
 
     @property
-    def buildMethodCollection(self) -> list:
+    def buildMethodCollection(self):
         return self.buildMethodCollection_
     
     @property
-    def dataCollection(self) -> pd.DataFrame:
+    def dataCollection(self):
         return self.dataCollection_
+    
+    @property
+    def subModel(self):
+        return self.subModel_
 
     def retrieveComponent(self, target : str):
         if target.upper() in self.components:

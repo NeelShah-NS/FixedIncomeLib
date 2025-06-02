@@ -1,4 +1,3 @@
-from date import *
 from product import *
 
 if __name__ == '__main__':

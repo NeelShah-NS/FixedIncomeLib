@@ -5,29 +5,32 @@ from typing import Union, Optional
 from date import Date
 import pandas as pd
 from date import (Date, Period, accrued)
-from model import (Model, ModelComponent)
-from model.model import (ModelType)
+from model import (Model, ModelComponent, ModelType)
 from market import *
 from utilities import (Interpolator1D)
 
 
 class YiedCurve(Model):
 
-    def __init__(self, valueDate: str, modelType: str, dataCollection: pd.DataFrame, buildMethodCollection: list) -> None:
+    def __init__(self, valueDate: str, dataCollection: pd.DataFrame, buildMethodCollection: list) -> None:
         columns = set(dataCollection.columns.to_list())
         assert 'INDEX' in columns; assert 'AXIS1' in columns; assert 'VALUES' in columns
-        super().__init__(valueDate, modelType, dataCollection, buildMethodCollection)
+        super().__init__(valueDate, 'YIELD_CURVE', dataCollection, buildMethodCollection)
     
-    def newModelComponent(self, target: str):
-        return YieldCurveModelComponent(self.valueDate, self.dataCollection, self.buildMethodCollection[target])
+    def newModelComponent(self, buildMethod: dict):
+        return YieldCurveModelComponent(self.valueDate, self.dataCollection, buildMethod)
     
-    def discountFactor(self, index : str, to_date : Date):
+    def discountFactor(self, index : str, to_date : Union[str, Date]):
         this_component = self.retrieveComponent(index)
-        time = accrued(self.valueDate_, to_date)
+        to_date_ = to_date
+        if isinstance(to_date, str): 
+            to_date_ = Date(to_date) 
+        assert to_date_ >= self.valueDate_
+        time = accrued(self.valueDate_, to_date_)
         exponent = this_component.getStateVarInterpolator().integral(0, time)
         return np.exp(-exponent)
         
-    def forward(self, index : str, effectiveDate : dt.datetime, termOrTerminationDate : Union[dt.datetime, str]):
+    def forward(self, index : str, effectiveDate : str, termOrTerminationDate : Union[Date, str]):
         ### TODO: needs to be implemented
         pass
 
@@ -41,9 +44,13 @@ class YieldCurveModelComponent(ModelComponent):
         self.axis1 = []
         self.timeToDate = []
         self.ifrInterpolator = None
-        tokenized_index = self.target_.split('-')
-        tenor = tokenized_index[-1]
-        self.targetIndex = IndexRegistry()._instance.get('-'.join(tokenized_index[:-1]), tenor)
+        # i don't like this implementation
+        if '1B' in self.target_: 
+            self.targetIndex = IndexRegistry()._instance.get(self.target_)
+        else:
+            tokenized_index = self.target_.split('-')
+            tenor = tokenized_index[-1]
+            self.targetIndex = IndexRegistry()._instance.get('-'.join(tokenized_index[:-1]), tenor)
         self.calibrate()
 
     def calibrate(self):
@@ -58,7 +65,7 @@ class YieldCurveModelComponent(ModelComponent):
             self.axis1.append(this_dt)
             self.timeToDate.append(accrued(self.valueDate_, this_dt))
         self.state_vars_ = this_df['VALUES'].values.tolist()
-        self.ifrInterpolator = Interpolator1D(self.axis1, self.state_vars_, self.interpolationMethod_)
+        self.ifrInterpolator = Interpolator1D(self.timeToDate, self.state_vars_, self.interpolationMethod_)
     
     def getStateVarInterpolator(self):
         return self.ifrInterpolator
