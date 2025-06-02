@@ -1,21 +1,21 @@
 import QuantLib as ql
 
-class Currecy:
+class Currency:
 
     def __init__(self, input : str) -> None:
         self.value_ = None
         if input.upper() == 'USD':
-            self.value_ = ql.USDCurrency
+            self.value_ = ql.USDCurrency()
         elif input.upper() == 'CAD':
-            self.value_ = ql.CADCurrency
+            self.value_ = ql.CADCurrency()
         elif input.upper() == 'GBP':
-            self.value_ = ql.GBPCurrency
+            self.value_ = ql.GBPCurrency()
         elif input.upper() == 'EUR':
-            self.value_ = ql.EURCurrency
+            self.value_ = ql.EURCurrency()
         elif input.upper() == 'JPY':
-            self.value_ = ql.JPYCurrency
+            self.value_ = ql.JPYCurrency()
         elif input.upper() == 'AUD':
-            self.value_ = ql.AUDCurrency
+            self.value_ = ql.AUDCurrency()
         else:
             raise Exception(input + ' is not current supported currency.')
 

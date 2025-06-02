@@ -1,6 +1,6 @@
 import pandas as pd
-from .classes import *
-from ..market import *
+from .classes import (Date, Period)
+from market import *
 
 def addPeriod(start_date : str, term : str, biz_conv : Optional[str]='NONE', hol_conv : Optional[str]='NONE', endOfMonth : Optional[bool]=False):
     this_cal = HolidayConvention(hol_conv).value
