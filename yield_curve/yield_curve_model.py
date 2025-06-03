@@ -4,7 +4,8 @@ import numpy as np
 from typing import Union, Optional
 from date import Date
 import pandas as pd
-from date import (Date, Period, accrued)
+from QuantLib import InterestRateIndex
+from date import (Date, Period, TermOrTerminationDate, accrued)
 from model import (Model, ModelComponent, ModelType)
 from market import *
 from utilities import (Interpolator1D)
@@ -29,10 +30,51 @@ class YiedCurve(Model):
         time = accrued(self.valueDate_, to_date_)
         exponent = this_component.getStateVarInterpolator().integral(0, time)
         return np.exp(-exponent)
+    
+    def forward(self, index : str, effectiveDate : Union[Date, str], termOrTerminationDate : Optional[Union[str, TermOrTerminationDate]]=''):
+        component = self.retrieveComponent(index)
+        isOIS = component.isOvernightIndex
+        if isOIS:
+            if isinstance(termOrTerminationDate, str) and termOrTerminationDate == '':
+                raise Exception('For OIS, one needs to specify term or termination date.')
+            return self.forwardOvernightIndex(component.target, effectiveDate, termOrTerminationDate)
+        else:
+            return self.forwardIborIndex(component.target, effectiveDate)
         
-    def forward(self, index : str, effectiveDate : str, termOrTerminationDate : Union[Date, str]):
-        ### TODO: needs to be implemented
-        pass
+    def forwardIborIndex(self, index : str, effectiveDate : Union[Date, str]):
+        component = self.retrieveComponent(index)
+        liborIndex = component.targetIndex
+        tenor = liborIndex.tenor()
+        # end date
+        cal = liborIndex.fixingCalendar()
+        effectiveDate_ = effectiveDate
+        if isinstance(effectiveDate, str): effectiveDate_ = Date(effectiveDate)
+        termDate = Date(cal.advance(effectiveDate_, tenor, liborIndex.businessDayConvention()))
+        # accrued
+        accrued = liborIndex.dayCounter().yearFraction(effectiveDate_, termDate)
+        # forward rate
+        dfStart = self.discountFactor(index, effectiveDate_)
+        dfEnd = self.discountFactor(index, termDate)
+        return (dfStart / dfEnd - 1.) / accrued
+    
+    def forwardOvernightIndex(self, index : str, effectiveDate : Union[Date, str], termOrTerminationDate : Union[str, TermOrTerminationDate]):
+        component = self.retrieveComponent(index)
+        oisIndex = component.targetIndex
+        # end date
+        effectiveDate_ = effectiveDate
+        if isinstance(effectiveDate, str): effectiveDate_ = Date(effectiveDate)
+        termOrTerminationDate_ = termOrTerminationDate
+        if isinstance(termOrTerminationDate, str): termOrTerminationDate_ = TermOrTerminationDate(termOrTerminationDate)
+        cal = oisIndex.fixingCalendar()
+        termDate = termOrTerminationDate_.getDate()
+        if termOrTerminationDate_.isTerm():
+            termDate = Date(cal.advance(effectiveDate_, termOrTerminationDate_.getTerm(), oisIndex.businessDayConvention()))
+        # accrued
+        accrued = oisIndex.dayCounter().yearFraction(effectiveDate_, termDate)
+        # forward rate
+        dfStart = self.discountFactor(index, effectiveDate_)
+        dfEnd = self.discountFactor(index, termDate)
+        return (dfStart / dfEnd - 1.) / accrued
 
 class YieldCurveModelComponent(ModelComponent):
 
@@ -44,13 +86,16 @@ class YieldCurveModelComponent(ModelComponent):
         self.axis1 = []
         self.timeToDate = []
         self.ifrInterpolator = None
+        self.targetIndex_ = None
+        self.isOvernightIndex_ = False
         # i don't like this implementation
         if '1B' in self.target_: 
-            self.targetIndex = IndexRegistry()._instance.get(self.target_)
+            self.targetIndex_ = IndexRegistry()._instance.get(self.target_)
+            self.isOvernightIndex_ = True
         else:
-            tokenized_index = self.target_.split('-')
-            tenor = tokenized_index[-1]
-            self.targetIndex = IndexRegistry()._instance.get('-'.join(tokenized_index[:-1]), tenor)
+            tokenizedIndex = self.target_.split('-')
+            tenor = tokenizedIndex[-1]
+            self.targetIndex_ = IndexRegistry()._instance.get('-'.join(tokenizedIndex[:-1]), tenor)
         self.calibrate()
 
     def calibrate(self):
@@ -59,13 +104,21 @@ class YieldCurveModelComponent(ModelComponent):
         ### TODO: axis1 can be a combination of dates and tenors
         ###       for now, i assume they're all tenor based
 
-        cal = self.targetIndex.fixingCalendar()
+        cal = self.targetIndex_.fixingCalendar()
         for each in this_df['AXIS1'].values.tolist():
-            this_dt = Date(cal.advance(self.valueDate_, Period(each), self.targetIndex.businessDayConvention()))
+            this_dt = Date(cal.advance(self.valueDate_, Period(each), self.targetIndex_.businessDayConvention()))
             self.axis1.append(this_dt)
             self.timeToDate.append(accrued(self.valueDate_, this_dt))
-        self.state_vars_ = this_df['VALUES'].values.tolist()
-        self.ifrInterpolator = Interpolator1D(self.timeToDate, self.state_vars_, self.interpolationMethod_)
+        self.stateVars = this_df['VALUES'].values.tolist()
+        self.ifrInterpolator = Interpolator1D(self.timeToDate, self.stateVars, self.interpolationMethod_)
     
     def getStateVarInterpolator(self):
         return self.ifrInterpolator
+
+    @property
+    def isOvernightIndex(self):
+        return self.isOvernightIndex_
+    
+    @property
+    def targetIndex(self):
+        return self.targetIndex_

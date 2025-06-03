@@ -28,3 +28,5 @@ if __name__ == '__main__':
     # test discounting
     print(model.discountFactor('SOFR-1B', '2025-06-25'))
     print(model.discountFactor('USD-LIBOR-BBA-3M', '2025-06-25'))
+    print(model.forward('SOFR-1B', '2025-06-25', '2025-07-25'))
+    print(model.forward('USD-LIBOR-BBA-3M', '2025-06-25'))

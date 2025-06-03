@@ -91,7 +91,7 @@ class ModelComponent(metaclass=ABCMeta):
         self.dataCollection_ = dataCollection
         self.buildMethod_ = buildMethod
         self.target_ = buildMethod['TARGET']
-        self.state_vars_ = []
+        self.stateVars_ = []
 
     @abstractmethod
     def calibrate(self):
