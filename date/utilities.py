@@ -3,6 +3,7 @@ from .classes import (Date, Period)
 from market import *
 
 def addPeriod(start_date : str, term : str, biz_conv : Optional[str]='NONE', hol_conv : Optional[str]='NONE', endOfMonth : Optional[bool]=False):
+    # advance(from QuantLib): “Advances” a given start_date by a tenor term (e.g. “6M”, “1Y”), then roll that result according to a business‐day rule and holiday calendar, and finally return a Date object.
     this_cal = HolidayConvention(hol_conv).value
     return Date(this_cal.advance(Date(start_date), Period(term), BusinessDayConvention(biz_conv).value, endOfMonth))
 
