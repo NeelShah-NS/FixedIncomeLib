@@ -210,7 +210,6 @@ class ProductRfrFuture(Product):
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
 
-### TODO: implement LIBOR based Swap and RFR based Swap
 class ProductIborSwap(Product):
    
     def __init__(self,
@@ -280,3 +279,68 @@ class ProductIborSwap(Product):
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
     
+class ProductOvernightSwap(Product):
+
+    def __init__(self,
+                 effectiveDate: str,
+                 maturity: Union[str, TermOrTerminationDate],
+                 payFixed: bool,
+                 fixedRate: float,
+                 overnightIndex: str,
+                 notional: float,
+                 longOrShort: str) -> None:
+
+        self.effDate_ = Date(effectiveDate)
+
+        if isinstance(maturity, str) and '-' not in maturity:
+            self.maturity_ = TermOrTerminationDate(maturity)
+        elif isinstance(maturity, TermOrTerminationDate):
+            self.maturity_ = maturity
+        else:
+            self.maturity_ = TermOrTerminationDate(maturity)
+
+        self.oisIndex_ = IndexRegistry().get(overnightIndex)
+        cal = self.oisIndex_.fixingCalendar()
+        if self.maturity_.isTerm():
+            term = self.maturity_.getTerm()
+            self.maturityDate_ = Date(cal.advance(self.effDate_, term, self.oisIndex_.businessDayConvention()))
+        else:
+            self.maturityDate_ = self.maturity_.getDate()
+
+        self.payFixed_       = payFixed
+        self.fixedRate_      = fixedRate
+        self.overnightIndex_ = self.oisIndex_.name()
+        self.notional_       = notional
+        ccy_code = self.oisIndex_.currency().code()
+        super().__init__(self.effDate_, self.maturityDate_, self.notional_, longOrShort, Currency(ccy_code))
+
+    @property
+    def prodType(self):
+        return ProductOvernightSwap.__name__
+
+    @property
+    def effectiveDate(self):
+        return self.effDate_
+
+    @property
+    def terminationDate(self):
+        return self.maturityDate_
+
+    @property
+    def payFixed(self):
+        return self.payFixed_
+
+    @property
+    def fixedRate(self):
+        return self.fixedRate_
+
+    @property
+    def overnightIndex(self):
+        return self.overnightIndex_
+
+    @property
+    def notional(self):
+        return self.notional_
+
+    def accept(self, visitor: ProductVisitor):
+        return visitor.visit(self)
