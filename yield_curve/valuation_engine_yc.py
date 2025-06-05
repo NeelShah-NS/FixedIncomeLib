@@ -35,5 +35,23 @@ class ValuationEngineProductFuture(ValuationEngine):
         #Futures are quoted as Price = 1 − forwardRate
         futuresPrice = 1.0 - forwardRate
         pnl = (futuresPrice - self.strike) * self.notional * self.buyOrSell
-        self.value_ = [ self.currency.value.code(), pnl ]
+        self.value_ = [self.currency.value.code(), pnl ]
+
+class ValuationEngineProductRfrFuture(ValuationEngine):
+    def __init__(self, model: YieldCurve, valuationParameters: dict, product: ProductRfrFuture):
+        super().__init__(model, valuationParameters, product)
+        self.currency      = product.currency
+        self.effectiveDate = product.effectiveDate
+        self.indexKey      = product.index
+        self.strike        = product.strike
+        self.buyOrSell     = 1.0 if product.longOrShort.value == LongOrShort.LONG else -1.0
+        self.notional      = product.notional
+        self.maturityDate  = product.maturityDate
+
+    def calculateValue(self):
+        termOrDate = TermOrTerminationDate(self.maturityDate.ISO())
+        forwardOis = self.model.forward(self.indexKey, self.effectiveDate, termOrDate)
+        futuresPrice = 1.0 - forwardOis
+        pnl = (futuresPrice - self.strike) * self.notional * self.buyOrSell
+        self.value_ = [self.currency.value.code(), pnl ]
 
