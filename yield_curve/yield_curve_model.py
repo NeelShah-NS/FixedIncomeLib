@@ -11,7 +11,7 @@ from market import *
 from utilities import (Interpolator1D)
 
 
-class YiedCurve(Model):
+class YieldCurve(Model):
 
     def __init__(self, valueDate: str, dataCollection: pd.DataFrame, buildMethodCollection: list) -> None:
         columns = set(dataCollection.columns.to_list())
