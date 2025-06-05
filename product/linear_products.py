@@ -25,6 +25,48 @@ class ProductBulletCashflow(Product):
         return visitor.visit(self)
     
 ### TODO: implement LIBOR cashflow/overnightindex cashflow classes, respectively
+class ProductIborCashflow(Product):
+
+    def __init__(self,
+                 startDate: str,
+                 endDate: str,
+                 index: str,
+                 spread: float,
+                 notional: float,
+                 longOrShort: str) -> None:
+        
+        self.accrualStart_ = Date(startDate)
+        self.accrualEnd_   = Date(endDate)
+        tokenized = index.split('-')
+        tenor     = tokenized[-1]  # e.g. "3M"
+        indexName = '-'.join(tokenized[:-1])
+        self.iborIndex_ = IndexRegistry().get(indexName, tenor)
+        self.spread_ = spread
+        ccy_code = self.iborIndex_.currency().code()
+        super().__init__(self.accrualStart_,self.accrualEnd_,notional,longOrShort,Currency(ccy_code))
+
+    @property
+    def prodType(self):
+        return ProductIborCashflow.__name__
+
+    @property
+    def index(self):
+        return self.iborIndex_.name()
+
+    @property
+    def spread(self):
+        return self.spread_
+
+    @property
+    def accrualStart(self):
+        return self.accrualStart_
+
+    @property
+    def accrualEnd(self):
+        return self.accrualEnd_
+
+    def accept(self, visitor: ProductVisitor):
+        return visitor.visit(self)
 
 class ProductFuture(Product):
 
