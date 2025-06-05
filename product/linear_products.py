@@ -168,7 +168,45 @@ class ProductFuture(Product):
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
     
+class ProductRfrFuture(Product):
+    
+    def __init__(self,
+                 effectiveDate: str,
+                 index: str,
+                 strike: float,
+                 notional: float,
+                 longOrShort: str) -> None:
 
-### TODO: implement RFR Future
+        self.effDate_ = Date(effectiveDate)
+        self.oisIndex_ = IndexRegistry().get(index)
+        self.expirationDate_ = Date(self.oisIndex_.fixingDate(self.effDate_))
+        self.maturityDate_   = Date(self.oisIndex_.maturityDate(self.effDate_))
+        self.strike_  = strike
+        self.notional_ = notional
+        ccy_code = self.oisIndex_.currency().code()
+        super().__init__(self.expirationDate_, self.maturityDate_, self.notional_, longOrShort, Currency(ccy_code))
+
+    @property
+    def prodType(self):
+        return ProductRfrFuture.__name__
+
+    @property
+    def expirationDate(self):
+        return self.expirationDate_
+
+    @property
+    def maturityDate(self):
+        return self.maturityDate_
+
+    @property
+    def strike(self):
+        return self.strike_
+
+    @property
+    def index(self):
+        return self.oisIndex_.name()
+
+    def accept(self, visitor: ProductVisitor):
+        return visitor.visit(self)
 
 ### TODO: implement LIBOR based Swap and RFR based Swap
