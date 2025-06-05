@@ -24,7 +24,6 @@ class ProductBulletCashflow(Product):
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
     
-### TODO: implement LIBOR cashflow/overnightindex cashflow classes, respectively
 class ProductIborCashflow(Product):
 
     def __init__(self,
@@ -64,6 +63,60 @@ class ProductIborCashflow(Product):
     @property
     def accrualEnd(self):
         return self.accrualEnd_
+
+    def accept(self, visitor: ProductVisitor):
+        return visitor.visit(self)
+    
+class ProductOvernightCashflow(Product):
+
+    def __init__(self,
+                 effectiveDate: str,
+                 termOrEnd: Union[str, TermOrTerminationDate],
+                 index: str,
+                 spread: float,
+                 notional: float,
+                 longOrShort: str) -> None:
+
+        
+        self.effDate_ = Date(effectiveDate)
+        if isinstance(termOrEnd, str):
+            self.termOrEnd_ = TermOrTerminationDate(termOrEnd)
+        else:
+            self.termOrEnd_ = termOrEnd
+
+        self.oisIndex_ = IndexRegistry().get(index)
+        cal         = self.oisIndex_.fixingCalendar()
+        if self.termOrEnd_.isTerm():
+            # advance by the tenor:
+            tenor = self.termOrEnd_.getTerm()
+            self.endDate_ = Date(cal.advance(self.effDate_, tenor, self.oisIndex_.businessDayConvention()))
+        else:
+            # it was given as a literal date:
+            self.endDate_ = self.termOrEnd_.getDate()
+        
+        self.spread_  = spread
+        ccy_code = self.oisIndex_.currency().code()
+        super().__init__(self.effDate_, self.endDate_, notional, longOrShort, Currency(ccy_code))
+
+    @property
+    def prodType(self):
+        return ProductOvernightCashflow.__name__
+
+    @property
+    def index(self):
+        return self.oisIndex_.name()
+
+    @property
+    def effectiveDate(self):
+        return self.effDate_
+
+    @property
+    def terminationDate(self):
+        return self.endDate_
+
+    @property
+    def spread(self):
+        return self.spread_
 
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
