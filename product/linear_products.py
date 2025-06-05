@@ -3,6 +3,7 @@ from .product import ProductVisitor
 from .product import Product
 from date import (Date, Period, TermOrTerminationDate)
 from market import (IndexRegistry, Currency)
+from typing import Union
 
 class ProductBulletCashflow(Product):
 
@@ -210,3 +211,72 @@ class ProductRfrFuture(Product):
         return visitor.visit(self)
 
 ### TODO: implement LIBOR based Swap and RFR based Swap
+class ProductIborSwap(Product):
+   
+    def __init__(self,
+                 effectiveDate: str,
+                 maturity: Union[str, TermOrTerminationDate],
+                 payFixed: bool,
+                 fixedRate: float,
+                 floatingIndex: str,
+                 notional: float,
+                 longOrShort: str) -> None:
+
+        self.effDate_ = Date(effectiveDate)
+
+        if isinstance(maturity, str) and '-' not in maturity:
+            # a tenor like "5Y"
+            self.maturity_ = TermOrTerminationDate(maturity)
+        elif isinstance(maturity, TermOrTerminationDate):
+            self.maturity_ = maturity
+        else:
+            # a literal date "2028-06-04"
+            self.maturity_ = TermOrTerminationDate(maturity)
+
+        idxName, tenor = floatingIndex.rsplit('-', 1)
+        self.iborIndex_ = IndexRegistry().get(idxName, tenor)
+        cal = self.iborIndex_.fixingCalendar()
+        if self.maturity_.isTerm():
+            term = self.maturity_.getTerm()
+            self.maturityDate_ = Date(cal.advance(self.effDate_, term, self.iborIndex_.businessDayConvention()))
+        else:
+            self.maturityDate_ = self.maturity_.getDate()
+
+        self.payFixed_      = payFixed
+        self.fixedRate_     = fixedRate
+        self.floatingIndex_ = self.iborIndex_.name()
+        self.notional_      = notional
+        ccy_code = self.iborIndex_.currency().code()
+        super().__init__(self.effDate_, self.maturityDate_, self.notional_, longOrShort, Currency(ccy_code))
+
+    @property
+    def prodType(self):
+        return ProductIborSwap.__name__
+
+    @property
+    def effectiveDate(self):
+        return self.effDate_
+
+    @property
+    def terminationDate(self):
+        return self.maturityDate_
+
+    @property
+    def payFixed(self):
+        return self.payFixed_
+
+    @property
+    def fixedRate(self):
+        return self.fixedRate_
+
+    @property
+    def floatingIndex(self):
+        return self.floatingIndex_
+
+    @property
+    def notional(self):
+        return self.notional_
+
+    def accept(self, visitor: ProductVisitor):
+        return visitor.visit(self)
+    
