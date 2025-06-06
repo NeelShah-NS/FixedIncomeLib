@@ -230,11 +230,11 @@ class OvernightSwapVisitor(ProductVisitor):
 
         this_row = ['OvernightIndex']
         this_row.append(prod.overnightIndex)
-        nvp.append()
+        nvp.append(this_row)
 
         this_row = ['PayFixed']
         this_row.append(prod.payFixed)
-        nvp.append()
+        nvp.append(this_row)
 
         this_row = ['Notional']
         this_row.append(prod.notional)
