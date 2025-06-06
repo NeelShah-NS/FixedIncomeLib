@@ -132,6 +132,7 @@ class ProductFuture(Product):
                  longOrShort : str) -> None:
         
         self.strike_ = strike
+        self.indexKey_ = index
         self.effectiveDate_ = Date(effectiveDate)
         tokenized_index = index.split('-')
         self.tenor_ = tokenized_index[-1] # if this errors
@@ -141,7 +142,7 @@ class ProductFuture(Product):
         
         super().__init__(self.effectiveDate_, self.maturityDate_, notional, longOrShort, 
                          Currency(self.index_.currency().code()))
-    
+     
     @property
     def expirationDate(self):
         return self.expirationDate_
@@ -163,8 +164,9 @@ class ProductFuture(Product):
         return self.strike_
     
     @property
-    def index(self):
-        return self.index_.name()
+    def index(self) -> str:
+        # Return the original registry key string, not the QL internal name.
+        return self.indexKey_
 
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
@@ -179,6 +181,7 @@ class ProductRfrFuture(Product):
                  longOrShort: str) -> None:
 
         self.effDate_ = Date(effectiveDate)
+        self.indexKey_   = index
         self.oisIndex_ = IndexRegistry().get(index)
         self.expirationDate_ = Date(self.oisIndex_.fixingDate(self.effDate_))
         self.maturityDate_   = Date(self.oisIndex_.maturityDate(self.effDate_))
@@ -204,8 +207,9 @@ class ProductRfrFuture(Product):
         return self.strike_
 
     @property
-    def index(self):
-        return self.oisIndex_.name()
+    def index(self) -> str:
+        # Must return the same key you used to build the curve
+        return self.indexKey_
 
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
