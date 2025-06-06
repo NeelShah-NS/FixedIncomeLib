@@ -29,7 +29,7 @@ def isEndOfMonth(input_date : str, hol_conv : str):
 def endOfMonth(input_date : str, hol_conv : str):
     return HolidayConvention(hol_conv).value.endOfMonth(Date(input_date))
 
-def makeScheudle(
+def makeSchedule(
         start_dt : str, 
         end_dt : str, 
         frequency : str,

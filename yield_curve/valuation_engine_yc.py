@@ -1,7 +1,9 @@
+import pandas as pd
 from .yield_curve_model import YieldCurve
-from product import (LongOrShort, ProductBulletCashflow, ProductFuture, ProductRfrFuture)
+from product import (LongOrShort, ProductBulletCashflow, ProductFuture, ProductRfrFuture,ProductIborSwap,ProductOvernightSwap)
 from valuation import (ValuationEngine)
 from date import TermOrTerminationDate, Date
+from date.utilities import makeSchedule
 
 class ValuationEngineProductBulletCashflow(ValuationEngine):
 
@@ -54,6 +56,114 @@ class ValuationEngineProductRfrFuture(ValuationEngine):
         self.value_  = [ self.currency.value.code(), pnl ]
 
 
-### TODO: Implement val engine for swap (libor/rfr) etc
+class ValuationEngineProductIborSwap(ValuationEngine):
+    def __init__(
+        self,
+        model: YieldCurve,
+        valuationParameters: dict,
+        product: ProductIborSwap
+    ):
+        super().__init__(model, valuationParameters, product)
+
+        self.currency       = product.currency
+        self.effectiveDate  = product.effectiveDate
+        self.terminationDate = product.terminationDate
+        self.payFixed       = product.payFixed
+        self.fixedRate      = product.fixedRate
+        self.floatingIndex  = product.floatingIndex
+        self.notional       = product.notional
+
+        # Assuming `valuationParameters` has exactly: "FIXED FREQUENCY", "HOL CONV", "BIZ CONV", "ACC BASIS" (all strings) in order to build the fixed‐leg schedule.
+        required_keys = ["FIXED FREQUENCY", "HOL CONV", "BIZ CONV", "ACC BASIS"]
+        for k in required_keys:
+            if k not in self.valParams:
+                raise KeyError(f"ValuationEngineProductIborSwap: missing parameter '{k}'")
+
+    def calculateValue(self):
+        freq      = self.valParams["FIXED FREQUENCY"]
+        hol_conv  = self.valParams["HOL CONV"]
+        biz_conv  = self.valParams["BIZ CONV"]
+        acc_basis = self.valParams["ACC BASIS"]
+
+        schedule_df: pd.DataFrame = makeSchedule(
+            self.effectiveDate.ISO(),
+            self.terminationDate.ISO(),
+            freq,
+            hol_conv,
+            biz_conv,
+            acc_basis
+        )
+        
+        pv_fixed = 0.0
+        for _, row in schedule_df.iterrows():
+            pay_dt: Date = row["PaymentDate"]
+            accrual: float = row["Accrued"]
+            df_i = self.model.discountFactor(self.floatingIndex, pay_dt)
+            pv_fixed += self.fixedRate * self.notional * accrual * df_i
+
+        df_T = self.model.discountFactor(self.floatingIndex, self.terminationDate)
+        pv_float = self.notional * (1.0 - df_T)
+
+        if self.payFixed:
+            net_pv = pv_float - pv_fixed
+        else:
+            net_pv = pv_fixed - pv_float
+
+        self.value_ = [ self.currency.value.code(), net_pv ]
+
+
+class ValuationEngineProductOvernightSwap(ValuationEngine):
+    def __init__(
+        self,
+        model: YieldCurve,
+        valuationParameters: dict,
+        product: ProductOvernightSwap
+    ):
+        super().__init__(model, valuationParameters, product)
+
+        self.currency        = product.currency
+        self.effectiveDate   = product.effectiveDate
+        self.terminationDate = product.terminationDate
+        self.payFixed        = product.payFixed
+        self.fixedRate       = product.fixedRate
+        self.overnightIndex  = product.overnightIndex
+        self.notional        = product.notional
+
+        required_keys = ["FIXED FREQUENCY", "HOL CONV", "BIZ CONV", "ACC BASIS"]
+        for k in required_keys:
+            if k not in self.valParams:
+                raise KeyError(f"ValuationEngineProductOvernightSwap: missing parameter '{k}'")
+
+    def calculateValue(self):
+        freq      = self.valParams["FIXED FREQUENCY"]
+        hol_conv  = self.valParams["HOL CONV"]
+        biz_conv  = self.valParams["BIZ CONV"]
+        acc_basis = self.valParams["ACC BASIS"]
+
+        schedule_df: pd.DataFrame = makeSchedule(
+            self.effectiveDate.ISO(),
+            self.terminationDate.ISO(),
+            freq,
+            hol_conv,
+            biz_conv,
+            acc_basis
+        )
+
+        pv_fixed = 0.0
+        for _, row in schedule_df.iterrows():
+            pay_dt: Date = row["PaymentDate"]
+            accrual: float = row["Accrued"]
+            df_i = self.model.discountFactor(self.overnightIndex, pay_dt)
+            pv_fixed += self.fixedRate * self.notional * accrual * df_i
+
+        df_T = self.model.discountFactor(self.overnightIndex, self.terminationDate)
+        pv_float = self.notional * (1.0 - df_T)
+
+        if self.payFixed:
+            net_pv = pv_float - pv_fixed
+        else:
+            net_pv = pv_fixed - pv_float
+
+        self.value_ = [ self.currency.value.code(), net_pv ]
 
 
