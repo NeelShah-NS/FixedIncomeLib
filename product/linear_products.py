@@ -186,7 +186,7 @@ class ProductRfrFuture(Product):
         self.tenor_     = tokenized[-1]
         self.oisIndex_  = IndexRegistry().get(index)
         self.expirationDate_ = Date(self.oisIndex_.fixingDate(self.effDate_))
-        self.maturityDate_   = Date(self.oisIndex_.maturityDate(self.effDate_))
+        self.maturityDate_   = Date(self.oisIndex_.maturityDate(self.effDate_ + 1))
         self.strike_   = strike
         self.notional_ = notional
         ccy_code      = self.oisIndex_.currency().code()

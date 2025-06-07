@@ -33,7 +33,7 @@ class ValuationEngineProductFuture(ValuationEngine):
     def calculateValue(self):
         forwardRate = self.model.forward(self.indexKey, self.effectiveDate)
         #Futures are quoted as Price = 1 − forwardRate
-        futuresPrice = 1.0 - forwardRate
+        futuresPrice = 100.0 *(1.0 - forwardRate)
         pnl = (futuresPrice - self.strike) * self.notional * self.buyOrSell
         self.value_ = [self.currency.value.code(), pnl ]
 
@@ -56,7 +56,7 @@ class ValuationEngineProductRfrFuture(ValuationEngine):
             maturity_str
         )
 
-        futuresPrice = 1.0 - forwardOis
+        futuresPrice = 100.0 *(1.0 - forwardOis)
         pnl = (futuresPrice - self.strike) * self.notional * self.buyOrSell
         self.value_ = [ self.currency.value.code(), pnl ]
 
