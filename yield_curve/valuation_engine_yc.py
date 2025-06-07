@@ -49,11 +49,17 @@ class ValuationEngineProductRfrFuture(ValuationEngine):
         self.maturityDate   = product.maturityDate
 
     def calculateValue(self):
-        termOrDate   = TermOrTerminationDate(self.maturityDate.ISO())
-        forwardOis   = self.model.forward(self.indexKey, self.expirationDate, termOrDate)
+        maturity_str = self.maturityDate.ISO()
+        forwardOis = self.model.forward(
+            self.indexKey,
+            self.expirationDate,
+            maturity_str
+        )
+
         futuresPrice = 1.0 - forwardOis
-        pnl          = (futuresPrice - self.strike) * self.notional * self.buyOrSell
-        self.value_  = [ self.currency.value.code(), pnl ]
+        pnl = (futuresPrice - self.strike) * self.notional * self.buyOrSell
+        self.value_ = [ self.currency.value.code(), pnl ]
+
 
 
 class ValuationEngineProductIborSwap(ValuationEngine):
@@ -70,7 +76,7 @@ class ValuationEngineProductIborSwap(ValuationEngine):
         self.terminationDate = product.terminationDate
         self.payFixed       = product.payFixed
         self.fixedRate      = product.fixedRate
-        self.floatingIndex  = product.floatingIndex
+        self.indexKey       = product.index
         self.notional       = product.notional
 
         # Assuming `valuationParameters` has exactly: "FIXED FREQUENCY", "HOL CONV", "BIZ CONV", "ACC BASIS" (all strings) in order to build the fixed‐leg schedule.
@@ -98,10 +104,10 @@ class ValuationEngineProductIborSwap(ValuationEngine):
         for _, row in schedule_df.iterrows():
             pay_dt: Date = row["PaymentDate"]
             accrual: float = row["Accrued"]
-            df_i = self.model.discountFactor(self.floatingIndex, pay_dt)
+            df_i   = self.model.discountFactor(self.indexKey, pay_dt)
             pv_fixed += self.fixedRate * self.notional * accrual * df_i
 
-        df_T = self.model.discountFactor(self.floatingIndex, self.terminationDate)
+        df_T = self.model.discountFactor(self.indexKey, self.terminationDate)
         pv_float = self.notional * (1.0 - df_T)
 
         if self.payFixed:
@@ -126,7 +132,7 @@ class ValuationEngineProductOvernightSwap(ValuationEngine):
         self.terminationDate = product.terminationDate
         self.payFixed        = product.payFixed
         self.fixedRate       = product.fixedRate
-        self.overnightIndex  = product.overnightIndex
+        self.indexKey        = product.index
         self.notional        = product.notional
 
         required_keys = ["FIXED FREQUENCY", "HOL CONV", "BIZ CONV", "ACC BASIS"]
@@ -153,10 +159,10 @@ class ValuationEngineProductOvernightSwap(ValuationEngine):
         for _, row in schedule_df.iterrows():
             pay_dt: Date = row["PaymentDate"]
             accrual: float = row["Accrued"]
-            df_i = self.model.discountFactor(self.overnightIndex, pay_dt)
+            df_i   = self.model.discountFactor(self.indexKey, pay_dt)
             pv_fixed += self.fixedRate * self.notional * accrual * df_i
 
-        df_T = self.model.discountFactor(self.overnightIndex, self.terminationDate)
+        df_T = self.model.discountFactor(self.indexKey, self.terminationDate)
         pv_float = self.notional * (1.0 - df_T)
 
         if self.payFixed:

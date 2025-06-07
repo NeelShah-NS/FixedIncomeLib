@@ -188,8 +188,8 @@ class IborSwapVisitor(ProductVisitor):
         this_row.append(prod.fixedRate)
         nvp.append(this_row)
 
-        this_row = ['FloatingIndex']
-        this_row.append(prod.floatingIndex)
+        this_row = ['Index']
+        this_row.append(prod.index)
         nvp.append(this_row)
 
         this_row = ['PayFixed']
@@ -228,8 +228,8 @@ class OvernightSwapVisitor(ProductVisitor):
         this_row.append(prod.fixedRate)
         nvp.append(this_row)
 
-        this_row = ['OvernightIndex']
-        this_row.append(prod.overnightIndex)
+        this_row = ['Index']
+        this_row.append(prod.index)
         nvp.append(this_row)
 
         this_row = ['PayFixed']
