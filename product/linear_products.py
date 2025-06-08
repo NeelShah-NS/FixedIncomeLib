@@ -172,64 +172,63 @@ class ProductFuture(Product):
         return visitor.visit(self)
     
 class ProductRfrFuture(Product):
-
     def __init__(self,
                  effectiveDate: str,
+                 termOrEnd: Union[str, TermOrTerminationDate],
                  index: str,
                  strike: float,
                  notional: float,
                  longOrShort: str) -> None:
-
+        
         self.effDate_    = Date(effectiveDate)
         self.indexKey_   = index
-        tokenized       = index.split('-')
-        self.tenor_     = tokenized[-1]
-        self.oisIndex_  = IndexRegistry().get(index)
-        self.expirationDate_ = Date(self.oisIndex_.fixingDate(self.effDate_))
-        self.maturityDate_   = Date(self.oisIndex_.maturityDate(self.effDate_ + 1))
-        self.strike_   = strike
-        self.notional_ = notional
-        ccy_code      = self.oisIndex_.currency().code()
+        self.strike_     = strike
+        self.notional_   = notional
+        self.oisIndex_   = IndexRegistry().get(index)
 
-        super().__init__(
-            self.expirationDate_,
-            self.maturityDate_,
-            self.notional_,
-            longOrShort,
-            Currency(ccy_code)
-        )
+        if isinstance(termOrEnd, str):
+            self.termOrEnd_ = TermOrTerminationDate(termOrEnd)
+        else:
+            self.termOrEnd_ = termOrEnd
+
+        cal = self.oisIndex_.fixingCalendar()
+        if self.termOrEnd_.isTerm():
+            tenor = self.termOrEnd_.getTerm()
+            self.expDate_ = Date(
+                cal.advance(self.effDate_, tenor, self.oisIndex_.businessDayConvention())
+            )
+        else:
+            self.expDate_ = self.termOrEnd_.getDate()
+
+        super().__init__(self.effDate_, self.expDate_, self.notional_, longOrShort, Currency(self.oisIndex_.currency().code()))
 
     @property
-    def prodType(self):
+    def prodType(self) -> str:
         return ProductRfrFuture.__name__
 
     @property
-    def expirationDate(self):
-        return self.expirationDate_
+    def effectiveDate(self) -> Date:
+        return self.effDate_
 
     @property
-    def maturityDate(self):
-        return self.maturityDate_
+    def expirationDate(self) -> Date:
+        return self.expDate_
 
     @property
-    def tenor(self) -> str:
-        return self.tenor_
+    def strike(self) -> float:
+        return self.strike_
 
     @property
     def index(self) -> str:
         return self.indexKey_
-
+    
     @property
-    def strike(self):
-        return self.strike_
-
-    @property
-    def effectiveDate(self):
-        return self.effDate_
+    def terminationDate(self):
+        return self.lastDate
 
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
-
+    
 class ProductIborSwap(Product):
     def __init__(
         self,

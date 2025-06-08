@@ -144,8 +144,12 @@ class RfrFutureVisitor(ProductVisitor):
         this_row.append(prod.expirationDate.ISO())
         nvp.append(this_row)
 
-        this_row = ['MaturityDate']
-        this_row.append(prod.maturityDate.ISO())
+        this_row = ['EffectiveDate']
+        this_row.append(prod.effectiveDate.ISO())
+        nvp.append(this_row)
+
+        this_row = ['TerminationDate']
+        this_row.append(prod.terminationDate.ISO())
         nvp.append(this_row)
 
         this_row = ['Index']
