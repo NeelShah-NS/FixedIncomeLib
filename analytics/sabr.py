@@ -13,9 +13,15 @@ class TimeDecayLognormalSABR(Hagan2002LognormalSABR):
         self._computeEffectiveParams()
 
     def _computeEffectiveParams(self):
-        volDecaySpeed = self.volDecaySpeed
         ts = self._ts
         te = self._te
+
+        # NO-DECAY case: if decayStart >= Te, keep original SABR params
+        if ts >= te:
+            self._alphaEff = super().alpha()
+            return
+
+        volDecaySpeed = self.volDecaySpeed
 
         # base SABR inputs
         alpha = super().alpha()
@@ -26,9 +32,9 @@ class TimeDecayLognormalSABR(Hagan2002LognormalSABR):
         tau = 2 * volDecaySpeed * ts + te
 
         # gamma
-        gammaFirstTerm = (2 * tau**3 + te**3 + (4 * volDecaySpeed * volDecaySpeed - 2 * volDecaySpeed) * ts**3 + 6 * volDecaySpeed * ts**2 * te)
+        gammaFirstTerm = (2 * tau**3+ te**3+ (4 * volDecaySpeed * volDecaySpeed - 2 * volDecaySpeed) * ts**3+ 6 * volDecaySpeed * ts**2 * te)
         gammaSecondTerm = (3 * volDecaySpeed * rho * rho * (te - ts)**2* (3 * tau**2 - te**2 + 5 * volDecaySpeed * ts**2 + 4 * ts * te))
-        gamma = (gammaFirstTerm / ((4 * volDecaySpeed + 3) * (2 * volDecaySpeed + 1)) + gammaSecondTerm / ((4 * volDecaySpeed + 3) * (3 * volDecaySpeed + 2)**2))
+        gamma = (gammaFirstTerm / ((4 * volDecaySpeed + 3) * (2 * volDecaySpeed + 1))+ gammaSecondTerm / ((4 * volDecaySpeed + 3) * (3 * volDecaySpeed + 2)**2))
 
         # nu-hat squared
         nuHat2 = nu * nu * gamma * (2 * volDecaySpeed + 1) / (tau**3 * te)
