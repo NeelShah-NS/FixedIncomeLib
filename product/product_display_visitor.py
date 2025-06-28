@@ -1,6 +1,6 @@
 import pandas as pd
 from .product import (ProductVisitor)
-from .linear_products import (ProductBulletCashflow, ProductFuture, ProductIborCashflow, ProductOvernightCashflow, ProductRfrFuture, ProductIborSwap, ProductOvernightSwap)
+from .linear_products import (ProductBulletCashflow, ProductFuture, ProductIborCashflow, ProductOvernightIndexCashflow, ProductRfrFuture, ProductIborSwap, ProductOvernightSwap)
 
 class CashflowVisitor(ProductVisitor):
 
@@ -41,7 +41,11 @@ class FutureVisitor(ProductVisitor):
         nvp.append(this_row)
 
         this_row = ['MaturityDate']
-        this_row.append(prod.terminationDate.ISO())
+        this_row.append(prod.maturityDate.ISO())
+        nvp.append(this_row)
+
+        this_row = ['AccrualFactor']
+        this_row.append(prod.accrualFactor)
         nvp.append(this_row)
         
         this_row = ['Currency']
@@ -76,6 +80,10 @@ class IborCashflowVisitor(ProductVisitor):
         this_row.append(prod.accrualEnd.ISO())
         nvp.append(this_row)
 
+        this_row = ['AccrualFactor']
+        this_row.append(prod.accrualFactor)
+        nvp.append(this_row)
+
         this_row = ['Index']
         this_row.append(prod.index)
         nvp.append(this_row)
@@ -100,7 +108,7 @@ class IborCashflowVisitor(ProductVisitor):
     
 class OvernightCashflowVisitor(ProductVisitor):
 
-    def visit(self, prod: ProductOvernightCashflow):
+    def visit(self, prod: ProductOvernightIndexCashflow):
 
         nvp = []
 
@@ -116,6 +124,10 @@ class OvernightCashflowVisitor(ProductVisitor):
         this_row.append(prod.index)
         nvp.append(this_row)
 
+        this_row = ['Compounding']
+        this_row.append(prod.compounding)
+        nvp.append(this_row)
+
         this_row = ['Spread']
         this_row.append(prod.spread)
         nvp.append(this_row)
@@ -128,7 +140,7 @@ class OvernightCashflowVisitor(ProductVisitor):
         this_row.append(prod.currency.value.code())
         nvp.append(this_row)
 
-        this_row = ['LongOrShrt']
+        this_row = ['LongOrShort']
         this_row.append(prod.longOrShort.valueStr)
         nvp.append(this_row)
 
@@ -140,8 +152,8 @@ class RfrFutureVisitor(ProductVisitor):
 
         nvp = []
 
-        this_row = ['ExpirationDate']
-        this_row.append(prod.expirationDate.ISO())
+        this_row = ['MaturityDate']
+        this_row.append(prod.maturityDate.ISO())
         nvp.append(this_row)
 
         this_row = ['EffectiveDate']
@@ -150,6 +162,14 @@ class RfrFutureVisitor(ProductVisitor):
 
         this_row = ['TerminationDate']
         this_row.append(prod.terminationDate.ISO())
+        nvp.append(this_row)
+
+        this_row = ['AccrualFactor']
+        this_row.append(prod.accrualFactor)
+        nvp.append(this_row)
+
+        this_row = ['Compounding']
+        this_row.append(prod.compounding)
         nvp.append(this_row)
 
         this_row = ['Index']
@@ -184,8 +204,8 @@ class IborSwapVisitor(ProductVisitor):
         this_row.append(prod.effectiveDate.ISO())
         nvp.append(this_row)
 
-        this_row = ['TerminationDate']
-        this_row.append(prod.terminationDate.ISO())
+        this_row = ['MaturityDate']
+        this_row.append(prod.maturityDate.ISO())
         nvp.append(this_row)
 
         this_row = ['FixedRate']
@@ -214,6 +234,10 @@ class IborSwapVisitor(ProductVisitor):
 
         return pd.DataFrame(nvp, columns=["Attribute", "Value"])
     
+    def listFloatingLeg(self, swap: ProductIborSwap, n: int = 3):
+        return [swap.floatingLegCashflow(i).accept(IborCashflowVisitor())
+                for i in range(min(n, swap.floatingLeg.count))]
+    
 class OvernightSwapVisitor(ProductVisitor):
 
     def visit(self, prod: ProductOvernightSwap):
@@ -224,8 +248,8 @@ class OvernightSwapVisitor(ProductVisitor):
         this_row.append(prod.effectiveDate.ISO())
         nvp.append(this_row)
 
-        this_row = ['TerminationDate']
-        this_row.append(prod.terminationDate.ISO())
+        this_row = ['MaturityDate']
+        this_row.append(prod.maturityDate.ISO())
         nvp.append(this_row)
 
         this_row = ['FixedRate']

@@ -7,7 +7,9 @@ from pysabr.black import (
 )
 
 def one_third_rule(v_atm_n: float,
-                   tau0: float,
-                   tau1: float) -> float:
+                   accrualStart: float,
+                   accrualEnd: float) -> float:
+    
+    length = accrualEnd - accrualStart
 
-    return v_atm_n * np.sqrt((tau1 + tau0/3) / tau1)
+    return v_atm_n * np.sqrt((accrualEnd - length + (length)/3)/accrualEnd)

@@ -3,9 +3,7 @@ from pysabr.models.hagan_2002_lognormal_sabr import Hagan2002LognormalSABR
 
 class TimeDecayLognormalSABR(Hagan2002LognormalSABR):
 
-    def __init__(self,
-                 f, shift, t, vAtmN, beta, rho, volVol,
-                 volDecaySpeed, decayStart):
+    def __init__(self, f, shift, t, vAtmN, beta, rho, volVol, volDecaySpeed, decayStart):
         self._ts = decayStart
         self._te = t
         self.volDecaySpeed = volDecaySpeed
@@ -16,14 +14,11 @@ class TimeDecayLognormalSABR(Hagan2002LognormalSABR):
         ts = self._ts
         te = self._te
 
-        # NO-DECAY case: if decayStart >= Te, keep original SABR params
         if ts >= te:
             self._alphaEff = super().alpha()
             return
 
         volDecaySpeed = self.volDecaySpeed
-
-        # base SABR inputs
         alpha = super().alpha()
         rho   = self.rho
         nu    = self.volvol

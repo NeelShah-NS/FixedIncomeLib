@@ -58,3 +58,6 @@ class IndexRegistry(object):
             raise KeyError(f"IndexRegistry: no entry found for '{key}'")
 
         return functor() if isDaily else functor(ql.Period(args[0]))
+    
+
+indexReg = IndexRegistry()

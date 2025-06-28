@@ -1,4 +1,6 @@
 import pandas as pd
+import QuantLib as ql
+from typing import Optional
 from .classes import (Date, Period)
 from market import *
 

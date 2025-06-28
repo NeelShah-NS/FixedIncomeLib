@@ -1,11 +1,19 @@
 import pandas as pd
-from .product import ProductVisitor
+from market.basics import AccrualBasis, BusinessDayConvention, HolidayConvention
+from .product import LongOrShort, ProductVisitor
 from .product import Product
 from date import (Date, Period, TermOrTerminationDate)
 from market import (IndexRegistry, Currency)
-from typing import Union
+from typing import List, Optional, Union
+from date.utilities import makeSchedule,accrued
+from product.portfolio import ProductPortfolio
+
+# -------------------------
+# Atomic Cash-Flow Classes
+# -------------------------
 
 class ProductBulletCashflow(Product):
+    prodType = "ProductBulletCashflow"
 
     def __init__(self, 
                  terminationDate : str, 
@@ -18,14 +26,11 @@ class ProductBulletCashflow(Product):
     def terminationDate(self):
         return self.lastDate
 
-    @property
-    def prodType(self):
-        return ProductBulletCashflow.__name__
-
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
     
 class ProductIborCashflow(Product):
+    prodType = "ProductIborCashflow"
 
     def __init__(self,
                  startDate: str,
@@ -37,21 +42,19 @@ class ProductIborCashflow(Product):
         
         self.accrualStart_ = Date(startDate)
         self.accrualEnd_   = Date(endDate)
+        self.indexKey_ = index 
         tokenized = index.split('-')
+        assert len(tokenized) >= 1, f"invalid index format: '{index}'"
         tenor     = tokenized[-1]  # e.g. "3M"
         indexName = '-'.join(tokenized[:-1])
         self.iborIndex_ = IndexRegistry().get(indexName, tenor)
         self.spread_ = spread
         ccy_code = self.iborIndex_.currency().code()
-        super().__init__(self.accrualStart_,self.accrualEnd_,notional,longOrShort,Currency(ccy_code))
-
-    @property
-    def prodType(self):
-        return ProductIborCashflow.__name__
+        super().__init__(self.accrualStart_, self.accrualEnd_, notional, longOrShort, Currency(ccy_code))
 
     @property
     def index(self):
-        return self.iborIndex_.name()
+        return self.indexKey_
 
     @property
     def spread(self):
@@ -64,72 +67,91 @@ class ProductIborCashflow(Product):
     @property
     def accrualEnd(self):
         return self.accrualEnd_
+    
+    @property
+    def accrualFactor(self) -> float:
+        return accrued(self.accrualStart_, self.accrualEnd_)
 
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
     
-class ProductOvernightCashflow(Product):
+class ProductOvernightIndexCashflow(Product):
+    prodType = "ProductOvernightIndexCashflow"
 
-    def __init__(self,
-                 effectiveDate: str,
-                 termOrEnd: Union[str, TermOrTerminationDate],
-                 index: str,
-                 spread: float,
-                 notional: float,
-                 longOrShort: str) -> None:
-
-        
+    def __init__(
+        self,
+        effectiveDate: str,
+        termOrEnd: Union[str, TermOrTerminationDate, Date],
+        index: str,
+        compounding: str,
+        spread: float,
+        notional: float,
+        longOrShort: str
+    ) -> None:
         self.effDate_ = Date(effectiveDate)
-        if isinstance(termOrEnd, str):
-            self.termOrEnd_ = TermOrTerminationDate(termOrEnd)
+        self.indexKey_   = index
+        self.oisIndex_  = IndexRegistry().get(index)
+
+        if isinstance(termOrEnd, Date):
+            self.endDate_ = termOrEnd
         else:
-            self.termOrEnd_ = termOrEnd
+            to = (TermOrTerminationDate(termOrEnd) if isinstance(termOrEnd, TermOrTerminationDate) else TermOrTerminationDate(termOrEnd))
+            self.termOrEnd_ = to
 
-        self.oisIndex_ = IndexRegistry().get(index)
-        cal         = self.oisIndex_.fixingCalendar()
-        if self.termOrEnd_.isTerm():
-            # advance by the tenor:
-            tenor = self.termOrEnd_.getTerm()
-            self.endDate_ = Date(cal.advance(self.effDate_, tenor, self.oisIndex_.businessDayConvention()))
-        else:
-            # it was given as a literal date:
-            self.endDate_ = self.termOrEnd_.getDate()
-        
-        self.spread_  = spread
-        ccy_code = self.oisIndex_.currency().code()
-        super().__init__(self.effDate_, self.endDate_, notional, longOrShort, Currency(ccy_code))
+            cal = self.oisIndex_.fixingCalendar()
+            if to.isTerm():
+                tenor = to.getTerm()
+                self.endDate_ = Date(
+                    cal.advance(self.effDate_, tenor, self.oisIndex_.businessDayConvention())
+                )
+            else:
+                self.endDate_ = to.getDate()
+
+        self.compounding_ = compounding.upper()
+        self.spread_      = spread
+        ccy_code         = self.oisIndex_.currency().code()
+
+        super().__init__(
+            self.effDate_,
+            self.endDate_,
+            notional,
+            longOrShort,
+            Currency(ccy_code)
+        )
 
     @property
-    def prodType(self):
-        return ProductOvernightCashflow.__name__
+    def index(self) -> str:
+        return self.indexKey_
 
     @property
-    def index(self):
-        return self.oisIndex_.name()
+    def compounding(self) -> str:
+        return self.compounding_
 
     @property
-    def effectiveDate(self):
+    def effectiveDate(self) -> Date:
         return self.effDate_
 
     @property
-    def terminationDate(self):
+    def terminationDate(self) -> Date:
         return self.endDate_
 
     @property
-    def spread(self):
+    def spread(self) -> float:
         return self.spread_
 
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
 
 class ProductFuture(Product):
+    prodType = "ProductFuture"
 
     def __init__(self, 
                  effectiveDate : str,
                  index : str,
                  strike : float,
                  notional : float,
-                 longOrShort : str) -> None:
+                 longOrShort : str,
+                 contractualSize: Optional[float] = None) -> None:
         
         self.strike_ = strike
         self.indexKey_ = index
@@ -139,9 +161,15 @@ class ProductFuture(Product):
         self.index_ = IndexRegistry()._instance.get('-'.join(tokenized_index[:-1]), self.tenor_)
         self.expirationDate_ = Date(self.index_.fixingDate(self.effectiveDate_))
         self.maturityDate_ = Date(self.index_.maturityDate(self.effectiveDate_))
+
+         # contractual size override vs. actual accrual
+        self.contractualSize_ = contractualSize
+        if contractualSize is not None:
+            self.accrualFactor_ = contractualSize
+        else:
+            self.accrualFactor_ = accrued(self.effectiveDate_, self.maturityDate_)
         
-        super().__init__(self.effectiveDate_, self.maturityDate_, notional, longOrShort, 
-                         Currency(self.index_.currency().code()))
+        super().__init__(self.effectiveDate_, self.maturityDate_, notional, longOrShort, Currency(self.index_.currency().code()))
      
     @property
     def expirationDate(self):
@@ -152,13 +180,13 @@ class ProductFuture(Product):
         return self.effectiveDate_
 
     @property
-    def terminationDate(self):
+    def maturityDate(self):
         return self.maturityDate_
-
+    
     @property
-    def prodType(self):
-        return ProductFuture.__name__
-
+    def accrualFactor(self) -> float:
+        return self.accrualFactor_
+    
     @property
     def strike(self):
         return self.strike_
@@ -172,19 +200,24 @@ class ProductFuture(Product):
         return visitor.visit(self)
     
 class ProductRfrFuture(Product):
+    prodType = "ProductRfrFuture"
+
     def __init__(self,
                  effectiveDate: str,
                  termOrEnd: Union[str, TermOrTerminationDate],
                  index: str,
+                 compounding: str,
                  strike: float,
                  notional: float,
-                 longOrShort: str) -> None:
+                 longOrShort: str,
+                 contractualSize: Optional[float] = None) -> None:
         
         self.effDate_    = Date(effectiveDate)
         self.indexKey_   = index
         self.strike_     = strike
         self.notional_   = notional
         self.oisIndex_   = IndexRegistry().get(index)
+        self.compounding_ = compounding.upper()
 
         if isinstance(termOrEnd, str):
             self.termOrEnd_ = TermOrTerminationDate(termOrEnd)
@@ -194,25 +227,32 @@ class ProductRfrFuture(Product):
         cal = self.oisIndex_.fixingCalendar()
         if self.termOrEnd_.isTerm():
             tenor = self.termOrEnd_.getTerm()
-            self.expDate_ = Date(
+            self.maturityDate_ = Date(
                 cal.advance(self.effDate_, tenor, self.oisIndex_.businessDayConvention())
             )
         else:
-            self.expDate_ = self.termOrEnd_.getDate()
+            self.maturityDate_ = self.termOrEnd_.getDate()
+        
+        self.contractualSize_ = contractualSize
+        if contractualSize is not None:
+            self.accrualFactor_ = contractualSize
+        else:
+            # uses your accrued() util to compute year‐fraction
+            self.accrualFactor_ = accrued(self.effDate_, self.maturityDate_)
 
-        super().__init__(self.effDate_, self.expDate_, self.notional_, longOrShort, Currency(self.oisIndex_.currency().code()))
-
-    @property
-    def prodType(self) -> str:
-        return ProductRfrFuture.__name__
+        super().__init__(self.effDate_, self.maturityDate_, self.notional_, longOrShort, Currency(self.oisIndex_.currency().code()))
 
     @property
     def effectiveDate(self) -> Date:
         return self.effDate_
 
     @property
-    def expirationDate(self) -> Date:
-        return self.expDate_
+    def maturityDate(self) -> Date:
+        return self.maturityDate_
+    
+    @property
+    def accrualFactor(self) -> float:
+        return self.accrualFactor_
 
     @property
     def strike(self) -> float:
@@ -223,161 +263,254 @@ class ProductRfrFuture(Product):
         return self.indexKey_
     
     @property
+    def compounding(self) -> str:
+        return self.compounding_
+    
+    @property
     def terminationDate(self):
         return self.lastDate
 
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
     
+# --------------------------------
+# Composition: Streams & Swaps
+# --------------------------------
+
+class InterestRateStream(ProductPortfolio):
+
+    def __init__(
+        self,
+        startDate: str,
+        endDate: str,
+        frequency: str,
+        iborIndex: Optional[str]       = None,
+        overnightIndex: Optional[str]  = None,
+        fixedRate: Optional[float]     = None,
+        ois_compounding: str           = "COMPOUND",
+        ois_spread: float              = 0.0,
+        notional: float                = 1.0,
+        position: str                  = 'LONG',
+        currency: str                  = 'USD',
+        holConv: str                   = 'TARGET',
+        bizConv: str                   = 'MF',
+        accrualBasis: str              = 'ACT/365 FIXED',
+        rule: str                      = 'BACKWARD',
+        endOfMonth: bool               = False
+    ):
+
+        # calendar    = HolidayConvention(holConv).value
+        # bdc         = BusinessDayConvention(bizConv).value
+        # dayCounter  = AccrualBasis(accrualBasis).value
+
+        schedule = makeSchedule(startDate, endDate, frequency, holConv, bizConv, accrualBasis, rule, endOfMonth)
+        prods, weights = [], []
+        for row in schedule.itertuples(index=False):
+            if iborIndex:
+                cf = ProductIborCashflow(Date(row.StartDate), Date(row.EndDate), iborIndex, 0.0, notional, position)
+            elif overnightIndex:
+                cf = ProductOvernightIndexCashflow(Date(row.StartDate), Date(row.EndDate), overnightIndex, ois_compounding, ois_spread, notional, position)
+            else:
+                cf = ProductBulletCashflow(Date(row.EndDate), currency, notional, position)
+            prods.append(cf)
+            weights.append(1.0)
+
+        super().__init__(prods, weights)
+
+    def cashflow(self, i: int) -> Product:
+        return self.element(i)
+
 class ProductIborSwap(Product):
+    prodType = "ProductIborSwap"
+
     def __init__(
         self,
         effectiveDate: str,
-        maturity: TermOrTerminationDate | str,
-        payFixed: bool,
+        maturityDate: str,
+        frequency: str,
+        iborIndex: str,
+        spread: float,
         fixedRate: float,
-        floatingIndex: str,
         notional: float,
-        longOrShort: str
+        position: str,
+        holConv: str      = 'TARGET',
+        bizConv: str      = 'MF',
+        accrualBasis: str = 'ACT/365 FIXED',
+        rule: str         = 'BACKWARD',
+        endOfMonth: bool  = False
     ) -> None:
         
-        self.indexKey_ = floatingIndex
-        idxName, tenor = floatingIndex.rsplit('-', 1)
-        self.iborIndex_ = IndexRegistry().get(idxName, tenor)
-        self.effDate_ = Date(effectiveDate)
+        self.iborIndexKey = iborIndex
+        self.fixedRate_   = fixedRate
+        self.payFixed_    = (position.upper() == 'SHORT')
 
-        if isinstance(maturity, str) and '-' not in maturity:
-            self.maturity_ = TermOrTerminationDate(maturity)
-        elif isinstance(maturity, TermOrTerminationDate):
-            self.maturity_ = maturity
-        else:
-            self.maturity_ = TermOrTerminationDate(maturity)
+        self.floatingLeg = InterestRateStream(
+            startDate      = effectiveDate,
+            endDate        = maturityDate,
+            frequency      = frequency,
+            iborIndex      = iborIndex,
+            overnightIndex = None,
+            fixedRate      = None,
+            notional       = notional,
+            position       = position,
+            holConv        = holConv,
+            bizConv        = bizConv,
+            accrualBasis   = accrualBasis,
+            rule           = rule,
+            endOfMonth     = endOfMonth
+        )
+        
+        self.fixedLeg = InterestRateStream(
+            startDate      = effectiveDate,
+            endDate        = maturityDate,
+            frequency      = frequency,
+            iborIndex      = None,
+            overnightIndex = None,
+            fixedRate      = fixedRate,
+            notional       = notional,
+            position       = position,
+            holConv        = holConv,
+            bizConv        = bizConv,
+            accrualBasis   = accrualBasis,
+            rule           = rule,
+            endOfMonth     = endOfMonth
+        )
 
-        cal = self.iborIndex_.fixingCalendar()
-        if self.maturity_.isTerm():
-            term = self.maturity_.getTerm()
-            self.maturityDate_ = Date(
-                cal.advance(self.effDate_, term, self.iborIndex_.businessDayConvention())
-            )
-        else:
-            self.maturityDate_ = self.maturity_.getDate()
+        self.notional_ = notional
+        self.position_ = LongOrShort(position)
+        super().__init__(
+            Date(effectiveDate),
+            Date(maturityDate),
+            notional,
+            position,
+            self.floatingLeg.element(0).currency
+        )
 
-        self.payFixed_      = payFixed
-        self.fixedRate_     = fixedRate
-        self.notional_      = notional
-        ccy_code = self.iborIndex_.currency().code()
-        super().__init__(self.effDate_, self.maturityDate_, self.notional_, longOrShort, Currency(ccy_code))
+    def floatingLegCashflow(self, i: int) -> Product:
+        assert 0 <= i < self.floatingLeg.count
+        return self.floatingLeg.element(i)
 
-    @property
-    def index(self) -> str:
-        return self.indexKey_
+    def fixedLegCashflow(self, i: int) -> Product:
+        assert 0 <= i < self.fixedLeg.count
+        return self.fixedLeg.element(i)
     
     @property
     def effectiveDate(self) -> Date:
-        return self.effDate_
-    
-    @property
-    def terminationDate(self) -> Date:
-        return self.maturityDate_
+        return self.firstDate
 
     @property
-    def effectiveDate(self) -> Date:
-        return self.effDate_
-
-    @property
-    def terminationDate(self) -> Date:
-        return self.maturityDate_
-
-    @property
-    def payFixed(self) -> bool:
-        return self.payFixed_
+    def maturityDate(self) -> Date:
+        return self.lastDate
 
     @property
     def fixedRate(self) -> float:
         return self.fixedRate_
 
     @property
-    def floatingIndex(self) -> str:
-        return self.iborIndex_.name()
+    def index(self) -> str:
+        return self.iborIndexKey
 
     @property
-    def notional(self) -> float:
-        return self.notional_
-
-    @property
-    def prodType(self) -> str:
-        return ProductIborSwap.__name__
-
-    def accept(self, visitor):
+    def payFixed(self) -> bool:
+        return self.payFixed_
+    
+    def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
-    
+
+
 class ProductOvernightSwap(Product):
+    prodType = "ProductOvernightSwap"
+
     def __init__(
         self,
         effectiveDate: str,
-        maturity: TermOrTerminationDate | str,
-        payFixed: bool,
-        fixedRate: float,
+        maturityDate: str,
+        frequency: str,
         overnightIndex: str,
+        spread: float,
+        fixedRate: float,
         notional: float,
-        longOrShort: str
+        position: str,
+        holConv: str      = 'TARGET',
+        bizConv: str      = 'MF',
+        accrualBasis: str = 'ACT/365 FIXED',
+        rule: str         = 'BACKWARD',
+        endOfMonth: bool  = False
     ) -> None:
         
-        self.indexKey_ = overnightIndex
-        self.oisIndex_ = IndexRegistry().get(overnightIndex)
-        self.effDate_ = Date(effectiveDate)
-        if isinstance(maturity, str) and '-' not in maturity:
-            self.maturity_ = TermOrTerminationDate(maturity)
-        elif isinstance(maturity, TermOrTerminationDate):
-            self.maturity_ = maturity
-        else:
-            self.maturity_ = TermOrTerminationDate(maturity)
+        self.overnightIndexKey = overnightIndex
+        self.fixedRate_        = fixedRate
+        self.payFixed_         = (position.upper() == 'SHORT')
 
-        cal = self.oisIndex_.fixingCalendar()
-        if self.maturity_.isTerm():
-            term = self.maturity_.getTerm()
-            self.maturityDate_ = Date(
-                cal.advance(self.effDate_, term, self.oisIndex_.businessDayConvention())
-            )
-        else:
-            self.maturityDate_ = self.maturity_.getDate()
-        self.payFixed_       = payFixed
-        self.fixedRate_      = fixedRate
-        self.notional_       = notional
-        ccy_code = self.oisIndex_.currency().code()
-        super().__init__(self.effDate_, self.maturityDate_, self.notional_, longOrShort, Currency(ccy_code))
+        self.floatingLeg = InterestRateStream(
+            startDate      = effectiveDate,
+            endDate        = maturityDate,
+            frequency      = frequency,
+            iborIndex      = None,
+            overnightIndex = overnightIndex,
+            fixedRate      = None,
+            notional       = notional,
+            position       = position,
+            holConv        = holConv,
+            bizConv        = bizConv,
+            accrualBasis   = accrualBasis,
+            rule           = rule,
+            endOfMonth     = endOfMonth
+        )
+        
+        self.fixedLeg = InterestRateStream(
+            startDate      = effectiveDate,
+            endDate        = maturityDate,
+            frequency      = frequency,
+            iborIndex      = None,
+            overnightIndex = None,
+            fixedRate      = fixedRate,
+            notional       = notional,
+            position       = position,
+            holConv        = holConv,
+            bizConv        = bizConv,
+            accrualBasis   = accrualBasis,
+            rule           = rule,
+            endOfMonth     = endOfMonth
+        )
 
-    @property
-    def index(self) -> str:
-        return self.indexKey_
+        self.notional_ = notional
+        self.position_ = LongOrShort(position)
+        super().__init__(
+            Date(effectiveDate),
+            Date(maturityDate),
+            notional,
+            position,
+            self.floatingLeg.element(0).currency
+        )
 
+    def floatingLegCashflow(self, i: int) -> Product:
+        assert 0 <= i < self.floatingLeg.count
+        return self.floatingLeg.element(i)
+
+    def fixedLegCashflow(self, i: int) -> Product:
+        assert 0 <= i < self.fixedLeg.count
+        return self.fixedLeg.element(i)
+    
     @property
     def effectiveDate(self) -> Date:
-        return self.effDate_
+        return self.firstDate
 
     @property
-    def terminationDate(self) -> Date:
-        return self.maturityDate_
-
-    @property
-    def payFixed(self) -> bool:
-        return self.payFixed_
+    def maturityDate(self) -> Date:
+        return self.lastDate
 
     @property
     def fixedRate(self) -> float:
         return self.fixedRate_
 
     @property
-    def overnightIndex(self) -> str:
-        return self.oisIndex_.name()
+    def index(self) -> str:
+        return self.overnightIndexKey
 
     @property
-    def notional(self) -> float:
-        return self.notional_
-
-    @property
-    def prodType(self) -> str:
-        return ProductOvernightSwap.__name__
-
-    def accept(self, visitor):
+    def payFixed(self) -> bool:
+        return self.payFixed_
+    
+    def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
