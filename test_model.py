@@ -24,7 +24,7 @@ if __name__ == '__main__':
     # test model building
     data_collection = pd.DataFrame(DUMMY_DATA_COLLECTION, columns=['INDEX', 'AXIS1', 'VALUES'])
     build_method_collection = DUMMY_BUILD_METHOD
-    model = YiedCurve(value_date, data_collection, build_method_collection)
+    model = YieldCurve(value_date, data_collection, build_method_collection)
     # test discounting
     print(model.discountFactor('SOFR-1B', '2025-06-25'))
     print(model.discountFactor('USD-LIBOR-BBA-3M', '2025-06-25'))

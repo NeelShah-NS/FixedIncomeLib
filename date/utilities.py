@@ -1,4 +1,6 @@
 import pandas as pd
+import QuantLib as ql
+from typing import Optional
 from .classes import (Date, Period)
 from market import *
 
@@ -29,7 +31,7 @@ def isEndOfMonth(input_date : str, hol_conv : str):
 def endOfMonth(input_date : str, hol_conv : str):
     return HolidayConvention(hol_conv).value.endOfMonth(Date(input_date))
 
-def makeScheudle(
+def makeSchedule(
         start_dt : str, 
         end_dt : str, 
         frequency : str,
@@ -42,7 +44,7 @@ def makeScheudle(
         fixing_offset : Optional[str]='',
         fixing_offset_biz_conv : Optional[str]='',
         fixing_offset_hol_conv : Optional[str]='',
-        paymnent_offset : Optional[str]='',
+        payment_offset : Optional[str]='',
         payment_offset_biz_conv : Optional[str]='',
         payment_offset_hol_conv: Optional[str]='') -> pd.DataFrame:
 
@@ -65,8 +67,8 @@ def makeScheudle(
             f = addPeriod(e if fix_in_arrear else s, fixing_offset, fixing_offset_biz_conv, fixing_offset_hol_conv)
         fixing_dates.append(f)
         p = e
-        if paymnent_offset != '':
-            p = addPeriod(e, paymnent_offset, payment_offset_biz_conv, payment_offset_hol_conv)
+        if payment_offset != '':
+            p = addPeriod(e, payment_offset, payment_offset_biz_conv, payment_offset_hol_conv)
         payment_dates.append(p)
         accs.append(accrued(s, e, acc_basis, biz_conv, hol_conv))
 
