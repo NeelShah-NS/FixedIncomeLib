@@ -26,7 +26,7 @@ if __name__ == '__main__':
     # model 
     data_collection = pd.DataFrame(DUMMY_DATA_COLLECTION, columns=['INDEX', 'AXIS1', 'VALUES'])
     build_method_collection = DUMMY_BUILD_METHOD
-    model = YieldCurve(value_date, data_collection, build_method_collection)
+    model = YiedCurve(value_date, data_collection, build_method_collection)
     
     # val_param
     valuation_parameters = {'FUNDING INDEX' : 'SOFR-1B'}

@@ -48,8 +48,7 @@ class Model(metaclass=ABCMeta):
         for this_bm in self.buildMethodCollection:
             assert isinstance(this_bm, dict)
             assert 'TARGET' in list(this_bm.keys())
-            key = this_bm['TARGET'].upper()
-            self.components[key] = self.newModelComponent(this_bm)
+            self.components[this_bm['TARGET']] = self.newModelComponent(this_bm)
 
     @abstractmethod
     def newModelComponent(self, buildMethod : dict):
@@ -76,7 +75,9 @@ class Model(metaclass=ABCMeta):
         return self.subModel_
 
     def retrieveComponent(self, target : str):
-        return self.components.get(target.upper())
+        if target.upper() in self.components:
+            return self.components[target.upper()]
+        return None
 
 ### one model can have multiple components
 class ModelComponent(metaclass=ABCMeta):

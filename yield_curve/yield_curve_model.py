@@ -11,8 +11,7 @@ from market import *
 from utilities import (Interpolator1D)
 
 
-class YieldCurve(Model):
-    MODEL_TYPE = 'YIELD_CURVE'
+class YiedCurve(Model):
 
     def __init__(self, valueDate: str, dataCollection: pd.DataFrame, buildMethodCollection: list) -> None:
         columns = set(dataCollection.columns.to_list())
@@ -58,30 +57,24 @@ class YieldCurve(Model):
         dfEnd = self.discountFactor(index, termDate)
         return (dfStart / dfEnd - 1.) / accrued
     
-    def forwardOvernightIndex(self, index : str, effectiveDate : Union[Date, str], termOrTerminationDate : Union[str, TermOrTerminationDate, Date]):
+    def forwardOvernightIndex(self, index : str, effectiveDate : Union[Date, str], termOrTerminationDate : Union[str, TermOrTerminationDate]):
         component = self.retrieveComponent(index)
         oisIndex = component.targetIndex
-
-        effectiveDate_ = effectiveDate if isinstance(effectiveDate, Date) else Date(effectiveDate)
-
-        if isinstance(termOrTerminationDate, Date):
-            termDate = termOrTerminationDate
-        else:
-            to = (termOrTerminationDate 
-                  if isinstance(termOrTerminationDate, TermOrTerminationDate)
-                  else TermOrTerminationDate(termOrTerminationDate))
-            cal = oisIndex.fixingCalendar()
-            if to.isTerm():
-                termDate = Date(
-                    cal.advance(effectiveDate_, to.getTerm(), oisIndex.businessDayConvention())
-                )
-            else:
-                termDate = to.getDate()
-
-        accrual = oisIndex.dayCounter().yearFraction(effectiveDate_, termDate)
+        # end date
+        effectiveDate_ = effectiveDate
+        if isinstance(effectiveDate, str): effectiveDate_ = Date(effectiveDate)
+        termOrTerminationDate_ = termOrTerminationDate
+        if isinstance(termOrTerminationDate, str): termOrTerminationDate_ = TermOrTerminationDate(termOrTerminationDate)
+        cal = oisIndex.fixingCalendar()
+        termDate = termOrTerminationDate_.getDate()
+        if termOrTerminationDate_.isTerm():
+            termDate = Date(cal.advance(effectiveDate_, termOrTerminationDate_.getTerm(), oisIndex.businessDayConvention()))
+        # accrued
+        accrued = oisIndex.dayCounter().yearFraction(effectiveDate_, termDate)
+        # forward rate
         dfStart = self.discountFactor(index, effectiveDate_)
-        dfEnd   = self.discountFactor(index, termDate)
-        return (dfStart / dfEnd - 1.0) / accrual
+        dfEnd = self.discountFactor(index, termDate)
+        return (dfStart / dfEnd - 1.) / accrued
 
 class YieldCurveModelComponent(ModelComponent):
 

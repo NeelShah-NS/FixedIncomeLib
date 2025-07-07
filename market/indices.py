@@ -1,6 +1,4 @@
 import QuantLib as ql
-import json
-import os
 
 class Currency:
 
@@ -29,35 +27,31 @@ class IndexRegistry(object):
     
     _instance = None
 
+    ### TODO: make it a json/yaml
+    THIS_REGISTRY = {
+        'USD-LIBOR-BBA' : ql.USDLibor,
+        'SOFR-1B' : ql.Sofr,
+        'FF-1B' : ql.FedFunds,
+        'GBP-LIBOR-BBA' : ql.GBPLibor,
+        'SONIA-1B' : ql.Sonia,
+        'CAD-LIBOR-BA' : ql.CADLibor,
+        'CORRA-1B' : ql.Corra,
+        'EURIBOR' : ql.Euribor,
+        'EONIA' : ql.Eonia,
+        'AUD-LIBOR-BBA' : ql.AUDLibor,
+        'AONIA-1B' : ql.Aonia,
+        'JPY-LIBOR-BBA' : ql.JPYLibor,
+        'TONIA-1B' : ql.Tona
+    }
+
     def __new__(cls, *args, **kwargs):
         if not isinstance(cls._instance, cls):
             cls._instance = object.__new__(cls, *args, **kwargs)
-
-            thisDir  = os.path.dirname(__file__)  # e.g., src/market
-            jsonPath = os.path.join(thisDir, "index_registry.json")
-
-            with open(jsonPath, "r") as fileHandle:
-                dataMap = json.load(fileHandle)
-
-            registryMap = {}
-            for indexKey, className in dataMap.items():
-                try:
-                    qlClass = getattr(ql, className)
-                except AttributeError:
-                    raise KeyError(f"QuantLib has no attribute '{className}' for key '{indexKey}'")
-                registryMap[indexKey] = qlClass
-
-            cls._instance.RegistryMap = registryMap
-
+            ### TODO: read from a file instead of hard coded map above
+            cls._instance.registry = cls.THIS_REGISTRY
         return cls._instance
 
     def get(cls, key, *args):
         isDaily = len(args) == 0
-        functor = cls.RegistryMap.get(key)
-        if functor is None:
-            raise KeyError(f"IndexRegistry: no entry found for '{key}'")
-
+        functor = cls.registry.get(key)
         return functor() if isDaily else functor(ql.Period(args[0]))
-    
-
-indexReg = IndexRegistry()
