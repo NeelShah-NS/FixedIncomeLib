@@ -1,4 +1,5 @@
 from .product import (LongOrShort, Product)
 from .portfolio import (ProductPortfolio)
 from .linear_products import (ProductBulletCashflow, ProductFuture, ProductIborCashflow, ProductOvernightIndexCashflow, ProductRfrFuture, ProductIborSwap, ProductOvernightSwap, InterestRateStream)
-from .product_display_visitor import (CashflowVisitor, FutureVisitor, IborCashflowVisitor, OvernightCashflowVisitor, RfrFutureVisitor, IborSwapVisitor, OvernightSwapVisitor)
+from .product_display_visitor import (CashflowVisitor, FutureVisitor, IborCashflowVisitor, OvernightCashflowVisitor, RfrFutureVisitor, IborSwapVisitor, OvernightSwapVisitor, IborCapFloorletVisitor, OvernightCapFloorletVisitor, IborCapFloorVisitor, OvernightCapFloorVisitor, IborSwaptionVisitor, OvernightSwaptionVisitor)
+from .non_linear_products import (ProductIborCapFloorlet, ProductOvernightCapFloorlet, CapFloorStream, ProductIborCapFloor, ProductOvernightCapFloor, ProductIborSwaption, ProductOvernightSwaption)
