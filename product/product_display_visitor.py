@@ -2,7 +2,6 @@ import pandas as pd
 from .product import (ProductVisitor)
 from .linear_products import (ProductBulletCashflow, ProductFuture, ProductIborCashflow, ProductOvernightIndexCashflow, ProductRfrFuture, ProductIborSwap, ProductOvernightSwap)
 from .non_linear_products import (ProductIborCapFloorlet, ProductOvernightCapFloorlet, ProductIborCapFloor, ProductOvernightCapFloor, ProductIborSwaption, ProductOvernightSwaption)
-from .portfolio import (ProductPortfolio)
 
 class CashflowVisitor(ProductVisitor):
 
@@ -528,20 +527,4 @@ class OvernightSwaptionVisitor(ProductVisitor):
         this_row.append(prod.longOrShort.valueStr)
         nvp.append(this_row)
 
-        return pd.DataFrame(nvp, columns=['Attribute', 'Value'])
-
-class PortfolioVisitor(ProductVisitor):
-    
-    def visit(self, prod: ProductPortfolio) -> pd.DataFrame:
-
-        nvp = []
-        
-        this_row = ['NumProducts']
-        this_row.append(prod.numProducts)
-        nvp.append(this_row)
-
-        for idx, (p, w) in enumerate(prod.elements, start=1):
-            nvp.append([f'Element {idx} Type',   p.prodType])
-            nvp.append([f'Element {idx} Weight', w       ])
-            
         return pd.DataFrame(nvp, columns=['Attribute', 'Value'])
