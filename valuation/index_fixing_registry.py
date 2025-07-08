@@ -1,15 +1,21 @@
 import csv
 from date.classes import Date
+from typing import Dict
 
 class IndexManager:
     
+    FIXING_PATH = "fixings/fixings.csv"
     _instance = None
 
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(IndexManager, cls).__new__(cls)
-            cls._instance._fixings: dict[str, dict[Date, float]] = {}  # type: ignore
+            cls._instance._initialize()
         return cls._instance
+    
+    def _initialize(self):
+        self._fixings = Dict[str, Dict[Date, float]] = {}
+        self.load_fixings_from_csv(IndexManager.FIXING_PATH)
 
     @classmethod
     def instance(cls) -> "IndexManager":
@@ -40,7 +46,7 @@ class IndexManager:
             if start_date <= dt < end_date
         }
 
-    def load_fixings_from_csv(self, file_path: str = "fixings/fixings.csv") -> None:
+    def load_fixings_from_csv(self, file_path: str) -> None:
         with open(file_path, newline='') as csv_file:
             csv_reader = csv.DictReader(csv_file)
             for record in csv_reader:
