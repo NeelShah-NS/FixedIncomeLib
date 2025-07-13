@@ -151,14 +151,15 @@ class CapFloorStream(ProductPortfolio):
         weights = []
         for row in schedule.itertuples(index=False):
             if iborIndex:
-                cf = ProductIborCapFloorlet(str(row.StartDate), str(row.EndDate), iborIndex, optionType, strike, notional, longOrShort)
+                cf = ProductIborCapFloorlet(Date(row.StartDate), Date(row.EndDate), iborIndex, optionType, strike, notional, longOrShort)
             elif overnightIndex:
-                cf = ProductOvernightCapFloorlet(str(row.StartDate), str(row.EndDate), overnightIndex, compounding, optionType, strike, notional, longOrShort)
+                cf = ProductOvernightCapFloorlet(Date(row.StartDate), Date(row.EndDate), overnightIndex, compounding, optionType, strike, notional, longOrShort)
             else:
                 raise ValueError("CapFloorStream requires either iborIndex or overnightIndex")
             products.append(cf)
             weights.append(1.0)
         super().__init__(products, weights)
+        self.products = products
 
     def cashflow(self, i: int) -> Product:
         return self.element(i)
@@ -393,7 +394,7 @@ class ProductOvernightSwaption(Product):
             spread=0.0,
             fixedRate=strikeRate,
             notional=notional,
-            longOrShort=longOrShort,
+            position=longOrShort,
             holConv=holConv,
             bizConv=bizConv,
             accrualBasis=accrualBasis,

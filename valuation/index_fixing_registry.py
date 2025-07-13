@@ -1,10 +1,13 @@
 import csv
-from date.classes import Date
+import os
+from date import Date
 from typing import Dict
+import datetime as _dt
 
 class IndexManager:
     
-    FIXING_PATH = "fixings/fixings.csv"
+    _MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+    FIXING_PATH = os.path.normpath(os.path.join(_MODULE_DIR, os.pardir, "fixings", "fixings.csv"))
     _instance = None
 
     def __new__(cls):
@@ -14,7 +17,7 @@ class IndexManager:
         return cls._instance
     
     def _initialize(self):
-        self._fixings = Dict[str, Dict[Date, float]] = {}
+        self._fixings: Dict[str, Dict[Date, float]] = {}
         self.load_fixings_from_csv(IndexManager.FIXING_PATH)
 
     @classmethod
@@ -51,7 +54,8 @@ class IndexManager:
             csv_reader = csv.DictReader(csv_file)
             for record in csv_reader:
                 idx_key     = record["index_key"]
-                date_string = record["date"]
+                raw = record["date"].split()[0]
+                date_string = _dt.datetime.strptime(raw, "%m/%d/%Y").date()
                 rate_value  = float(record["fixing"])
                 fixing_date = Date(date_string)
                 self.add_fixing(idx_key, fixing_date, rate_value)

@@ -48,7 +48,12 @@ class Model(metaclass=ABCMeta):
         for this_bm in self.buildMethodCollection:
             assert isinstance(this_bm, dict)
             assert 'TARGET' in list(this_bm.keys())
-            key = this_bm['TARGET'].upper()
+            tgt = this_bm['TARGET']
+            val = this_bm.get('VALUES', None)
+            if val:
+                key = f"{tgt}-{val}".upper()
+            else:
+                key = tgt.upper()
             self.components[key] = self.newModelComponent(this_bm)
 
     @abstractmethod

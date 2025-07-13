@@ -15,9 +15,10 @@ class Date(ql.Date):
             if isinstance(this_arg, ql.Date):
                 these_args = (this_arg.dayOfMonth(), this_arg.month(), this_arg.year())
             elif isinstance(this_arg, str):
-                these_args = (this_arg, '%Y-%m-%d')
-            elif isinstance(this_arg, dt.datetime):
-                these_args = (this_arg.month, this_arg.day, this_arg.year)
+                iso = this_arg.split()[0]
+                these_args = (iso, '%Y-%m-%d')
+            elif isinstance(this_arg, dt.date):
+                these_args = (this_arg.day, this_arg.month, this_arg.year)
         super().__init__(*these_args)
 
 class Period(ql.Period):

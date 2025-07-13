@@ -26,7 +26,7 @@ class SabrModel(Model):
         for p in self.PARAMETERS:
             assert p in columns, f"SABR data must include '{p}'"
         super().__init__(valueDate, self.MODEL_TYPE, dataCollection, buildMethodCollection)
-        self.subModel = ycModel
+        self._subModel = ycModel
         self.shift = shift
 
     @classmethod
@@ -63,12 +63,16 @@ class SabrModel(Model):
 
         params: List[float] = []
         for p in self.PARAMETERS:
-            key = f"{index}-{p}"
-            this_component = self.retrieveComponent(key)
-            if this_component is None:
-                raise KeyError(f"Missing SABR component: {key}")
-            params.append(this_component.interpolate(expiry, tenor))
-        return tuple(params)  # type: ignore
+            comp_key = f"{index}-{p}".upper()
+            comp = self.components.get(comp_key)
+            if comp is None:
+                raise KeyError(f"No SABR component found for {index} / {p}")
+            params.append(comp.interpolate(expiry, tenor))
+        return tuple(params)
+    
+    @property
+    def subModel(self):
+        return self._subModel
 
 class SabrModelComponent(ModelComponent):
 

@@ -2,13 +2,14 @@ import datetime as dt
 import pandas as pd
 import numpy as np
 from typing import Union, Optional
-from date import Date
+from date import Date,makeSchedule
 import pandas as pd
 from QuantLib import InterestRateIndex
 from date import (Date, Period, TermOrTerminationDate, accrued)
 from model import (Model, ModelComponent, ModelType)
 from market import *
 from utilities import (Interpolator1D)
+from product.linear_products import ProductIborCashflow, ProductOvernightIndexCashflow
 
 
 class YieldCurve(Model):
