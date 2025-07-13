@@ -3,7 +3,7 @@ from product.product import Product
 
 class ProductPortfolio(Product):
     prodType = "ProductPortfolio"
-    
+
     def __init__(self, products: List[Product], weights: Optional[List[float]] = None):
         assert products, "Portfolio must contain at least one product"
         if weights is None:
