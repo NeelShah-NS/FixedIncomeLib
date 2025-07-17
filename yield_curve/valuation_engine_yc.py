@@ -258,6 +258,8 @@ class ValuationEngineInterestRateStream(ValuationEngine):
     def annuity(self) -> float:
         fixed_rate = self.product.fixedRate
         notional   = self.product.notional
+        if fixed_rate == 0 or notional == 0:
+            raise RuntimeError(f"Cannot compute annuity: fixedRate={fixed_rate}, notional={notional}")
         return self._pv_fixed / (fixed_rate * notional)
 
     def parRate(self) -> float:

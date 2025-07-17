@@ -11,9 +11,11 @@ class ProductPortfolio(Product):
         assert len(weights) == len(products), "Weights list must match products list length"
         self.elements: List[Tuple[Product, float]] = list(zip(products, weights))
 
-        self.notional = None
-        self.coupon = None
-        self.maturity = None
+        for attr in ("notional", "coupon", "maturity"):
+            try:
+                setattr(self, attr, None)
+            except AttributeError:
+                pass
 
     @property
     def numProducts(self):
