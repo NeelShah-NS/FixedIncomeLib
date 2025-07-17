@@ -10,20 +10,19 @@ class SABRCalculator:
         self.method = method.lower() if method is not None else None
 
     def option_price(self, index: str, expiry: float, tenor: float, forward: float, strike: float, option_type: str) -> float:
-        normal_vol, beta, nu, rho = self.model.get_sabr_parameters(index, expiry, tenor)
-        shift = self.model.shift
+        normal_vol, beta, nu, rho, shift, decay = self.model.get_sabr_parameters(index, expiry, tenor)
 
         if self.method == "top-down":
             sabr_pricer = TimeDecayLognormalSABR(
                 f            = forward + shift,
                 shift        = shift,
-                t            = expiry,
+                t            = expiry + tenor,
                 vAtmN        = normal_vol,
                 beta         = beta,
                 rho          = rho,
                 volVol       = nu,
-                volDecaySpeed= getattr(self.model, 'vol_decay_speed', 0.0),
-                decayStart   = getattr(self.model, 'decay_start', expiry)
+                volDecaySpeed= decay,
+                decayStart   = expiry
             )
         # elif self.method == "bottom-up":
         #     sabr_pricer = BottomUpLognormalSABR(
@@ -51,19 +50,17 @@ class SABRCalculator:
         
         if option_type.upper() == "CAP":
             if hasattr(sabr_pricer, "callPrice"):
-                return sabr_pricer.callPrice(k_shifted)
+                raw_price = sabr_pricer.callPrice(k_shifted)
             elif hasattr(sabr_pricer, "call"):
-                return sabr_pricer.call(k_shifted, cp='call')
+                raw_price = sabr_pricer.call(k_shifted, cp='call')
             else:
-                raise AttributeError(
-                    f"No compatible call‐price method on pricer {type(sabr_pricer)}"
-                )
+                raise AttributeError(f"No compatible call‐price method on pricer {type(sabr_pricer)}")
         else:
             if hasattr(sabr_pricer, "putPrice"):
-                return sabr_pricer.putPrice(k_shifted)
+                raw_price = sabr_pricer.putPrice(k_shifted)
             elif hasattr(sabr_pricer, "call"):
-                return sabr_pricer.call(k_shifted, cp='put')
+                raw_price = sabr_pricer.call(k_shifted, cp='put')
             else:
-                raise AttributeError(
-                    f"No compatible put‐price method on pricer {type(sabr_pricer)}"
-                )
+                raise AttributeError(f"No compatible put‐price method on pricer {type(sabr_pricer)}")
+        
+        return raw_price

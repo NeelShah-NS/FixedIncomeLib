@@ -159,14 +159,15 @@ class ValuationEngineIborSwaption(ValuationEngine):
     ) -> None:
         super().__init__(model, valuation_parameters, product)
         self.yieldCurve   = model.subModel
-        self.sabrCalc     = SABRCalculator(model,
-                                method=valuation_parameters.get("SABR_METHOD", None))
+        self.sabrCalc     = SABRCalculator(model, method=valuation_parameters.get("SABR_METHOD", None))
         self.swap          = product.swap
         self.expiry        = product.expiryDate
         self.notional      = product.notional
         self.buyOrSell     = 1.0 if product.longOrShort.value == LongOrShort.LONG else -1.
         self.currencyCode  = self.swap.currency.value.code()
         self.strikeRate    = self.swap.fixedRate
+        self.optionType = product.optionType
+        self.optionFlag = 'CAP'   if self.optionType == 'PAYER' else 'FLOOR'
 
     def calculateValue(self) -> None:
         t_exp = accrued(self.valueDate, self.expiry)
@@ -184,7 +185,7 @@ class ValuationEngineIborSwaption(ValuationEngine):
             tenor       = t_ten,
             forward     = forward_swap_rate,
             strike      = self.strikeRate,
-            option_type = 'CAP',
+            option_type = self.optionFlag,
         )
 
         pv = self.notional * swap_annuity * price *  self.buyOrSell
@@ -201,14 +202,15 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
     def __init__(self, model: SabrModel, valuation_parameters: Dict[str, Any], product: ProductOvernightSwaption) -> None:
         super().__init__(model, valuation_parameters, product)
         self.yieldCurve   = model.subModel
-        self.sabrCalc     = SABRCalculator(model,
-                                method=valuation_parameters.get("SABR_METHOD", None))
+        self.sabrCalc     = SABRCalculator(model, method=valuation_parameters.get("SABR_METHOD", None))
         self.swap          = product.swap
         self.expiry        = product.expiryDate
         self.notional      = product.notional
         self.buyOrSell     = 1.0 if product.longOrShort.value == LongOrShort.LONG else -1.
         self.currencyCode  = self.swap.currency.value.code()
         self.strikeRate    = self.swap.fixedRate
+        self.optionType = product.optionType
+        self.optionFlag = 'CAP'   if self.optionType == 'PAYER' else 'FLOOR'
 
     def calculateValue(self) -> None:
         t_exp = accrued(self.valueDate, self.expiry)
@@ -226,7 +228,7 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
             tenor       = t_ten,
             forward     = forward_swap_rate,
             strike      = self.strikeRate,
-            option_type = 'CAP',
+            option_type = self.optionFlag,
         )
 
         pv = self.notional * swap_annuity * price * self.buyOrSell

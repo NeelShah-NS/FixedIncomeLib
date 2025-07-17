@@ -27,7 +27,7 @@ class TimeDecayLognormalSABR(Hagan2002LognormalSABR):
         tau = 2 * volDecaySpeed * ts + te
 
         # gamma
-        gammaFirstTerm = (2 * tau**3+ te**3+ (4 * volDecaySpeed * volDecaySpeed - 2 * volDecaySpeed) * ts**3+ 6 * volDecaySpeed * ts**2 * te)
+        gammaFirstTerm = tau * (2 * tau**3+ te**3+ (4 * volDecaySpeed * volDecaySpeed - 2 * volDecaySpeed) * ts**3+ 6 * volDecaySpeed * ts**2 * te)
         gammaSecondTerm = (3 * volDecaySpeed * rho * rho * (te - ts)**2* (3 * tau**2 - te**2 + 5 * volDecaySpeed * ts**2 + 4 * ts * te))
         gamma = (gammaFirstTerm / ((4 * volDecaySpeed + 3) * (2 * volDecaySpeed + 1))+ gammaSecondTerm / ((4 * volDecaySpeed + 3) * (3 * volDecaySpeed + 2)**2))
 

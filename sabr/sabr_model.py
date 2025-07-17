@@ -17,7 +17,6 @@ class SabrModel(Model):
         dataCollection: pd.DataFrame,
         buildMethodCollection: List[Dict[str, Any]],
         ycModel: YieldCurve,
-        shift: float = 0.0
     ):
         columns = set(dataCollection.columns.to_list())
         assert 'INDEX' in columns 
@@ -27,17 +26,15 @@ class SabrModel(Model):
             assert p in columns, f"SABR data must include '{p}'"
         super().__init__(valueDate, self.MODEL_TYPE, dataCollection, buildMethodCollection)
         self._subModel = ycModel
-        self.shift = shift
-
+        
     @classmethod
     def from_curve(
         cls,
         valueDate: str,
         dataCollection: pd.DataFrame,
         buildMethodCollection: List[Dict[str, Any]],
-        ycModel: YieldCurve,
-        shift: float = 0.0 ) -> "SabrModel":
-        return cls(valueDate, dataCollection, buildMethodCollection, ycModel, shift)
+        ycModel: YieldCurve) -> "SabrModel":
+        return cls(valueDate, dataCollection, buildMethodCollection, ycModel)
 
     @classmethod
     def from_data(
@@ -46,10 +43,9 @@ class SabrModel(Model):
         dataCollection: pd.DataFrame,
         buildMethodCollection: List[Dict[str, Any]],
         ycData: pd.DataFrame,
-        ycBuildMethods: List[Dict[str, Any]],
-        shift: float = 0.0 ) -> "SabrModel":
+        ycBuildMethods: List[Dict[str, Any]]) -> "SabrModel":
         yc = YieldCurve(valueDate, ycData, ycBuildMethods)
-        return cls(valueDate, dataCollection, buildMethodCollection, yc, shift)
+        return cls(valueDate, dataCollection, buildMethodCollection, yc)
 
     def newModelComponent(self, build_method: Dict[str, Any]) -> ModelComponent:
         return SabrModelComponent(self.valueDate, self.dataCollection, build_method)
@@ -59,7 +55,7 @@ class SabrModel(Model):
         index: str,
         expiry: float,
         tenor: float,
-    ) -> Tuple[float, float, float, float]:
+    ) -> Tuple[float, float, float, float, float, float]:
 
         params: List[float] = []
         for p in self.PARAMETERS:
@@ -68,7 +64,12 @@ class SabrModel(Model):
             if comp is None:
                 raise KeyError(f"No SABR component found for {index} / {p}")
             params.append(comp.interpolate(expiry, tenor))
-        return tuple(params)
+    
+        comp0 = self.components[f"{index}-NORMALVOL".upper()]
+        shift = comp0.shift
+        decay = comp0.vol_decay_speed
+
+        return (*params, shift, decay)
     
     @property
     def subModel(self):
@@ -78,6 +79,8 @@ class SabrModelComponent(ModelComponent):
 
     def __init__(self, valueDate: Date, dataCollection: pd.DataFrame, buildMethod: Dict[str, Any]) -> None:
         super().__init__(valueDate, dataCollection, buildMethod)
+        self.shift           = float(buildMethod.get("SHIFT", 0.0))
+        self.vol_decay_speed = float(buildMethod.get("VOL_DECAY_SPEED", 0.0))
         self.calibrate()
 
     def calibrate(self) -> None:

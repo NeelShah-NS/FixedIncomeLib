@@ -315,6 +315,7 @@ class ProductIborSwaption(Product):
         swapEnd: str,
         frequency: str,
         iborIndex: str,
+        optionType: str,
         strikeRate: float,
         notional: float,
         longOrShort: str,
@@ -342,6 +343,8 @@ class ProductIborSwaption(Product):
         self.expiryDate_ = Date(optionExpiry)
         self.notional_  = notional
         self.position_  = LongOrShort(longOrShort)
+        self.optionType_ = optionType.upper()
+        assert self.optionType_ in ("PAYER","RECEIVER")        
         super().__init__(
             self.expiryDate_,
             self.underlyingSwap.lastDate,
@@ -362,6 +365,10 @@ class ProductIborSwaption(Product):
     def swap(self) -> ProductIborSwap:
         return self.underlyingSwap
 
+    @property
+    def optionType(self) -> str:
+        return self.optionType_
+
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
 
@@ -376,6 +383,7 @@ class ProductOvernightSwaption(Product):
         swapEnd: str,
         frequency: str,
         overnightIndex: str,
+        optionType: str,
         strikeRate: float,
         notional: float,
         longOrShort: str,
@@ -404,6 +412,8 @@ class ProductOvernightSwaption(Product):
         self.expiryDate_ = Date(optionExpiry)
         self.notional_  = notional
         self.position_  = LongOrShort(longOrShort)
+        self.optionType_ = optionType.upper()
+        assert self.optionType_ in ("PAYER","RECEIVER")
         super().__init__(
             self.expiryDate_,
             self.underlyingSwap.lastDate,
@@ -423,6 +433,10 @@ class ProductOvernightSwaption(Product):
     @property
     def swap(self) -> ProductOvernightSwap:
         return self.underlyingSwap
+    
+    @property
+    def optionType(self) -> str:
+        return self.optionType_
 
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
