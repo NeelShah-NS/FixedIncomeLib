@@ -1,16 +1,22 @@
+import pandas as pd
+import numpy as np
 from pysabr import Hagan2002LognormalSABR
-from sabr.sabr_model import SabrModel
-from analytics.sabr_top_down import TimeDecayLognormalSABR
-# from analytics.sabr_bottom_up import BottomUpLognormalSABR
+from sabr import SabrModel
+from .sabr_top_down      import TimeDecayLognormalSABR
+from .sabr_bottom_up     import BottomUpLognormalSABR
+from .correlation_surface import CorrSurface
 
 class SABRCalculator:
 
-    def __init__(self, sabr_model: SabrModel, method: str = "bottom-up"):
+    def __init__(self, sabr_model: SabrModel, method: str = "bottom-up", corr_df: pd.DataFrame = None, product_type: str | None = None, product=None):
         self.model = sabr_model
         self.method = method.lower() if method is not None else None
+        self.corr_surf = CorrSurface(corr_df) if corr_df is not None else None
+        self.product_type = product_type
+        self.product = product
 
     def option_price(self, index: str, expiry: float, tenor: float, forward: float, strike: float, option_type: str) -> float:
-        normal_vol, beta, nu, rho, shift, decay = self.model.get_sabr_parameters(index, expiry, tenor)
+        normal_vol, beta, nu, rho, shift, decay = self.model.get_sabr_parameters(index, expiry, tenor, product_type=self.product_type)
 
         if self.method == "top-down":
             sabr_pricer = TimeDecayLognormalSABR(
@@ -24,16 +30,18 @@ class SABRCalculator:
                 volDecaySpeed= decay,
                 decayStart   = expiry
             )
-        # elif self.method == "bottom-up":
-        #     sabr_pricer = BottomUpLognormalSABR(
-        #         f      = forward + shift,
-        #         shift  = shift,
-        #         t      = expiry,
-        #         vAtmN  = normal_vol,
-        #         beta   = beta,
-        #         rho    = rho,
-        #         volVol = nu,
-        #     ) 
+        elif self.method == "bottom-up":
+            if self.corr_surf is None:
+                raise ValueError("corr_df must be provided for bottom-up method")
+            sabr_pricer = BottomUpLognormalSABR(
+                f        = forward + shift,
+                shift    = shift,
+                expiry   = expiry,
+                tenor    = tenor,
+                model    = self.model,
+                corr_surf= self.corr_surf,
+                product  = self.product
+            )
         else:
             # default to plain Hagan log-normal SABR
             sabr_pricer = Hagan2002LognormalSABR(

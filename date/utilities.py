@@ -1,5 +1,6 @@
 import pandas as pd
 import QuantLib as ql
+from QuantLib import Schedule, Period, Days, Following, DateGeneration
 from typing import Optional
 from .classes import (Date, Period)
 from market import *
@@ -81,3 +82,20 @@ def makeSchedule(
     df['Accrued'] = accs
     
     return df
+
+def business_day_schedule(
+    start_date: Date,
+    end_date:   Date,
+    calendar) -> list[Date]:
+
+    ql_sched = ql.Schedule(
+        start_date,
+        end_date,
+        ql.Period(1, ql.Days),
+        calendar,
+        ql.Following, ql.Following,
+        ql.DateGeneration.Forward,
+        False
+    )
+
+    return [ Date(d) for d in ql_sched ]

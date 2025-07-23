@@ -3,10 +3,11 @@ from market.basics import AccrualBasis, BusinessDayConvention, HolidayConvention
 from .product import LongOrShort, ProductVisitor, Product
 from date import Date, TermOrTerminationDate
 from market import IndexRegistry, Currency
-from date.utilities import makeSchedule
+from date.utilities import makeSchedule, business_day_schedule
 from product.portfolio import ProductPortfolio
 from typing import List, Optional, Union
 from product.linear_products import ProductIborSwap,ProductOvernightSwap
+from valuation import IndexManager
 
 class ProductIborCapFloorlet(Product):
     prodType = "ProductIborCapFloorlet"
@@ -98,6 +99,10 @@ class ProductOvernightCapFloorlet(Product):
             self.effDate_, self.endDate_, notional, longOrShort, Currency(ccy_code)
         )
 
+    def get_fixing_schedule(self) -> list[Date]:
+        cal = self.oisIndex_.fixingCalendar()
+        return business_day_schedule(self.effDate_, self.endDate_, cal)
+
     @property
     def optionType(self) -> str:
         return self.optionType_
@@ -121,6 +126,10 @@ class ProductOvernightCapFloorlet(Product):
     @property
     def index(self) -> str:
         return self.indexKey_
+    
+    @property
+    def fixing_schedule(self) -> list[Date]:
+        return self.get_fixing_schedule()
 
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
@@ -272,6 +281,16 @@ class ProductOvernightCapFloor(Product):
             notional, longOrShort,
             self.capStream.element(0).currency
         )
+
+    def get_fixing_schedule(self) -> list[Date]:
+        mgr     = IndexManager.instance()
+        raw     = mgr.get_fixings(self.indexKey_, self.effDate_, self.endDate_)
+        fixing_qldates = sorted(raw.keys())
+        print(f"[ProductOvernightCapFloorlet] index={self.indexKey_}  eff={self.effDate_}  end={self.endDate_}")
+        print(f"    → raw fixings keys: {fixing_qldates!r}")
+        dates = [self.effDate_] + [Date(d) for d in fixing_qldates] + [self.endDate_]
+        print(f"    → final fixing‐schedule: {dates!r}")
+        return dates
 
     @property
     def effectiveDate(self) -> Date:

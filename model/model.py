@@ -43,17 +43,20 @@ class Model(metaclass=ABCMeta):
         self.dataCollection_ = dataCollection
         self.buildMethodCollection_ = buildMethodCollection
         self.subModel_ = None
-        # initialize model component
         self.components = dict()
         for this_bm in self.buildMethodCollection:
             assert isinstance(this_bm, dict)
             assert 'TARGET' in list(this_bm.keys())
-            tgt = this_bm['TARGET']
-            val = this_bm.get('VALUES', None)
-            if val:
-                key = f"{tgt}-{val}".upper()
+            name = this_bm.get("NAME")
+            if name:
+                key = name.upper()
             else:
-                key = tgt.upper()
+                tgt = this_bm['TARGET']
+                val = this_bm.get('VALUES', None)
+                if val:
+                    key = f"{tgt}-{val}".upper()
+                else:
+                    key = tgt.upper()
             self.components[key] = self.newModelComponent(this_bm)
 
     @abstractmethod

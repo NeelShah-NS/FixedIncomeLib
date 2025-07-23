@@ -55,7 +55,17 @@ class ValuationEngineOvernightCapFloorlet(ValuationEngine):
     def __init__(self, model: SabrModel, valuation_parameters: Dict[str, Any], product: ProductOvernightCapFloorlet) -> None:
         super().__init__(model, valuation_parameters, product)
         self.yieldCurve   = model.subModel
-        self.sabrCalc     = SABRCalculator(model, method=valuation_parameters.get("SABR_METHOD", None))
+        raw = valuation_parameters.get("SABR_METHOD")
+        sabr_method = raw.lower() if isinstance(raw, str) else "" 
+        prod_flag   = "CAPLET"   if sabr_method=="top-down" else None
+        corr_df = valuation_parameters.get("CORR_DF", None)
+        self.sabrCalc     = SABRCalculator(
+            model,
+            method  = valuation_parameters.get("SABR_METHOD", None),
+            corr_df = corr_df,
+            product = product,
+            product_type = prod_flag 
+        )
         self.currencyCode = product.currency.value.code()
         self.accrualStart = product.effectiveDate
         self.accrualEnd   = product.maturityDate
@@ -202,7 +212,10 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
     def __init__(self, model: SabrModel, valuation_parameters: Dict[str, Any], product: ProductOvernightSwaption) -> None:
         super().__init__(model, valuation_parameters, product)
         self.yieldCurve   = model.subModel
-        self.sabrCalc     = SABRCalculator(model, method=valuation_parameters.get("SABR_METHOD", None))
+        raw = valuation_parameters.get("SABR_METHOD")
+        sabr_method = raw.lower() if isinstance(raw, str) else ""        
+        prod_flag   = "SWAPTION" if sabr_method == "top-down" else None
+        self.sabrCalc     = SABRCalculator(model, method=sabr_method or None, corr_df= None, product_type = prod_flag)
         self.swap          = product.swap
         self.expiry        = product.expiryDate
         self.notional      = product.notional
