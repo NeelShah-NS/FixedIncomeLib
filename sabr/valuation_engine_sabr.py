@@ -4,13 +4,22 @@ from analytics import SABRCalculator
 from valuation import (ValuationEngine, ValuationEngineRegistry, IndexManager)
 from product import (LongOrShort, ProductIborCapFloorlet, ProductOvernightCapFloorlet, ProductIborCapFloor, ProductOvernightCapFloor, ProductIborSwaption, ProductOvernightSwaption)
 from date.utilities import accrued
+import warnings
 
 class ValuationEngineIborCapFloorlet(ValuationEngine):
 
     def __init__(self, model: SabrModel, valuation_parameters: Dict[str, Any], product: ProductIborCapFloorlet) -> None:
         super().__init__(model, valuation_parameters, product)
         self.yieldCurve   = model.subModel
-        self.sabrCalc     = SABRCalculator(model, method=valuation_parameters.get("SABR_METHOD", None))
+        raw = valuation_parameters.get("SABR_METHOD")
+        method_input = raw.lower() if isinstance(raw, str) else ""
+        if method_input in ("top-down", "bottom-up"):
+            warnings.warn(
+                f"SABR_METHOD='{raw}' is not allowed for Ibor products; "
+                "forcing standard Hagan SABR.",
+                UserWarning
+            )
+        self.sabrCalc = SABRCalculator(model, method=None)
         self.currencyCode = product.currency.value.code()
         self.accrualStart = product.accrualStart
         self.accrualEnd   = product.accrualEnd
@@ -58,11 +67,9 @@ class ValuationEngineOvernightCapFloorlet(ValuationEngine):
         raw = valuation_parameters.get("SABR_METHOD")
         sabr_method = raw.lower() if isinstance(raw, str) else "" 
         prod_flag   = "CAPLET"   if sabr_method=="top-down" else None
-        corr_df = valuation_parameters.get("CORR_DF", None)
         self.sabrCalc     = SABRCalculator(
             model,
             method  = valuation_parameters.get("SABR_METHOD", None),
-            corr_df = corr_df,
             product = product,
             product_type = prod_flag 
         )
@@ -169,7 +176,15 @@ class ValuationEngineIborSwaption(ValuationEngine):
     ) -> None:
         super().__init__(model, valuation_parameters, product)
         self.yieldCurve   = model.subModel
-        self.sabrCalc     = SABRCalculator(model, method=valuation_parameters.get("SABR_METHOD", None))
+        raw = valuation_parameters.get("SABR_METHOD")
+        method_input = raw.lower() if isinstance(raw, str) else ""
+        if method_input in ("top-down", "bottom-up"):
+            warnings.warn(
+                f"SABR_METHOD='{raw}' is not allowed for Ibor products; "
+                "forcing standard Hagan SABR.",
+                UserWarning
+            )
+        self.sabrCalc = SABRCalculator(model, method=None)
         self.swap          = product.swap
         self.expiry        = product.expiryDate
         self.notional      = product.notional
@@ -213,9 +228,14 @@ class ValuationEngineOvernightSwaption(ValuationEngine):
         super().__init__(model, valuation_parameters, product)
         self.yieldCurve   = model.subModel
         raw = valuation_parameters.get("SABR_METHOD")
-        sabr_method = raw.lower() if isinstance(raw, str) else ""        
-        prod_flag   = "SWAPTION" if sabr_method == "top-down" else None
-        self.sabrCalc     = SABRCalculator(model, method=sabr_method or None, corr_df= None, product_type = prod_flag)
+        method_input = raw.lower() if isinstance(raw, str) else ""
+        if method_input in ("top-down", "bottom-up"):
+            warnings.warn(
+                f"SABR_METHOD='{raw}' is not allowed for Overnight Swaptions; "
+                "forcing standard Hagan SABR.",
+                UserWarning
+            )
+        self.sabrCalc = SABRCalculator(model, method=None)
         self.swap          = product.swap
         self.expiry        = product.expiryDate
         self.notional      = product.notional

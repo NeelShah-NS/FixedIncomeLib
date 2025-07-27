@@ -63,7 +63,7 @@ class BottomUpLognormalSABR(Hagan2002LognormalSABR):
             rhos  .append(rho_i)
 
         T_total = sum(Tis)
-        gamma_1N = self._corr.get_corr(self._expiry, T_total)
+        gamma_1N = self._corr.get(self._expiry, T_total)
         mu = (1.0 - gamma_1N) / (len(Tis) - 1)
 
         N = len(Tis)

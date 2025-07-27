@@ -1,8 +1,7 @@
-import pandas as pd
-import datetime as dt
 from typing import Any, Optional
 from abc import ABCMeta, abstractmethod
 from date import Date
+from data import DataCollection 
 
 ### allowed model type
 class ModelType:
@@ -35,12 +34,12 @@ class Model(metaclass=ABCMeta):
     def __init__(self, 
                 valueDate : str, 
                 modelType : str, 
-                dataCollection : pd.DataFrame, 
+                dataRepository: DataCollection,
                 buildMethodCollection : list) -> None:
 
         self.valueDate_ = Date(valueDate)
         self.modelType_ = ModelType(modelType)
-        self.dataCollection_ = dataCollection
+        self.dataRepository_ = dataRepository
         self.buildMethodCollection_ = buildMethodCollection
         self.subModel_ = None
         self.components = dict()
@@ -76,8 +75,8 @@ class Model(metaclass=ABCMeta):
         return self.buildMethodCollection_
     
     @property
-    def dataCollection(self):
-        return self.dataCollection_
+    def dataRepo(self) -> DataCollection:
+        return self.dataRepository_
     
     @property
     def subModel(self):
@@ -91,11 +90,11 @@ class ModelComponent(metaclass=ABCMeta):
 
     def __init__(self, 
                 valueDate : Date, 
-                dataCollection : pd.DataFrame, 
+                dataRepository: DataCollection, 
                 buildMethod : dict) -> None:
 
         self.valueDate_ = valueDate
-        self.dataCollection_ = dataCollection
+        self.dataRepository_ = dataRepository
         self.buildMethod_ = buildMethod
         self.target_ = buildMethod['TARGET']
         self.stateVars_ = []
@@ -105,10 +104,9 @@ class ModelComponent(metaclass=ABCMeta):
         pass
 
     @property
+    def dataRepo(self) -> DataCollection:
+        return self.dataRepository_
+
+    @property
     def target(self):
         return self.target_
-
-
-
-
-

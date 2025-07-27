@@ -4,16 +4,26 @@ from pysabr import Hagan2002LognormalSABR
 from sabr import SabrModel
 from .sabr_top_down      import TimeDecayLognormalSABR
 from .sabr_bottom_up     import BottomUpLognormalSABR
-from .correlation_surface import CorrSurface
 
 class SABRCalculator:
 
-    def __init__(self, sabr_model: SabrModel, method: str = "bottom-up", corr_df: pd.DataFrame = None, product_type: str | None = None, product=None):
+    def __init__(self, sabr_model: SabrModel, method: str = "bottom-up", product_type: str | None = None, product=None):
         self.model = sabr_model
         self.method = method.lower() if method is not None else None
-        self.corr_surf = CorrSurface(corr_df) if corr_df is not None else None
         self.product_type = product_type
         self.product = product
+        if self.method == "bottom-up":
+            idx_key = self.product.index
+            try:
+                corr_md = self.model.dataRepo.get("CORR", idx_key)
+            except KeyError:
+                raise ValueError(
+                    "Bottom-up SABR requires a correlation surface in DataCollection under (data_type='CORR', data_convention='').\n"
+                    "Please call `dc.register_surface_dataframe(...)` on your corr‐DataFrame first."
+                )
+            self.corr_surf = corr_md
+        else:
+            self.corr_surf = None
 
     def option_price(self, index: str, expiry: float, tenor: float, forward: float, strike: float, option_type: str) -> float:
         normal_vol, beta, nu, rho, shift, decay = self.model.get_sabr_parameters(index, expiry, tenor, product_type=self.product_type)
