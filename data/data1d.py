@@ -1,22 +1,27 @@
-import numpy as np
 from typing import Sequence
 from .base import MarketData
-from utilities.numerics import Interpolator1D
 
 class Data1D(MarketData):
+    
     def __init__(
         self,
         data_type: str,
         data_convention: str,
         axis: Sequence[float],
-        values: Sequence[float],
-        method: str = "linear"
+        values: Sequence[float]
     ):
+        
         super().__init__(data_type, data_convention)
-        self.axis = np.array(axis, dtype=float)
-        self.values = np.array(values, dtype=float)
-        self.method = method
-        self._interp = Interpolator1D(self.axis, self.values, method=method)
 
-    def get(self, x: float) -> float:
-        return self._interp.interpolate(x)
+        if len(axis) != len(values):
+            raise ValueError("`axis` and `values` must be the same length")
+
+        self.axis = list(axis)
+        self.values = list(values)
+
+    def __repr__(self) -> str:
+        return (
+            f"Data1D(type={self.data_type!r}, "
+            f"conv={self.data_convention!r}, "
+            f"points={len(self.axis)})"
+        )

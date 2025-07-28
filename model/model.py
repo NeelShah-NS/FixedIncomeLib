@@ -1,7 +1,9 @@
-from typing import Any, Optional
+import pandas as pd
+import datetime as dt
+from typing import Any, Dict, List, Optional
 from abc import ABCMeta, abstractmethod
 from date import Date
-from data import DataCollection 
+from data import DataCollection
 
 ### allowed model type
 class ModelType:
@@ -34,28 +36,30 @@ class Model(metaclass=ABCMeta):
     def __init__(self, 
                 valueDate : str, 
                 modelType : str, 
-                dataRepository: DataCollection,
-                buildMethodCollection : list) -> None:
+                dataCollection : DataCollection, 
+                buildMethodCollection : List[Dict[str, Any]]) -> None:
 
         self.valueDate_ = Date(valueDate)
         self.modelType_ = ModelType(modelType)
-        self.dataRepository_ = dataRepository
+        self.dataCollection_ = dataCollection
         self.buildMethodCollection_ = buildMethodCollection
         self.subModel_ = None
-        self.components = dict()
+        # initialize model component
+        self.components: Dict[str, ModelComponent] = {}
         for this_bm in self.buildMethodCollection:
             assert isinstance(this_bm, dict)
             assert 'TARGET' in list(this_bm.keys())
-            name = this_bm.get("NAME")
-            if name:
-                key = name.upper()
+            tgt = this_bm['TARGET']
+            val = this_bm.get('VALUES', None)
+            if val:
+                key = f"{tgt}-{val}".upper()
             else:
-                tgt = this_bm['TARGET']
-                val = this_bm.get('VALUES', None)
-                if val:
-                    key = f"{tgt}-{val}".upper()
-                else:
-                    key = tgt.upper()
+                key = tgt.upper()
+
+            prod = this_bm.get("PRODUCT")
+            if prod:
+                key = f"{key}-{prod}".upper()
+
             self.components[key] = self.newModelComponent(this_bm)
 
     @abstractmethod
@@ -75,8 +79,8 @@ class Model(metaclass=ABCMeta):
         return self.buildMethodCollection_
     
     @property
-    def dataRepo(self) -> DataCollection:
-        return self.dataRepository_
+    def dataCollection(self):
+        return self.dataCollection_
     
     @property
     def subModel(self):
@@ -90,11 +94,11 @@ class ModelComponent(metaclass=ABCMeta):
 
     def __init__(self, 
                 valueDate : Date, 
-                dataRepository: DataCollection, 
-                buildMethod : dict) -> None:
+                dataCollection : DataCollection, 
+                buildMethod :  Dict[str, Any]) -> None:
 
         self.valueDate_ = valueDate
-        self.dataRepository_ = dataRepository
+        self.dataCollection_ = dataCollection
         self.buildMethod_ = buildMethod
         self.target_ = buildMethod['TARGET']
         self.stateVars_ = []
@@ -104,9 +108,9 @@ class ModelComponent(metaclass=ABCMeta):
         pass
 
     @property
-    def dataRepo(self) -> DataCollection:
-        return self.dataRepository_
-
-    @property
     def target(self):
         return self.target_
+    
+    @property
+    def dataCollection(self) -> Any:
+        return self.dataCollection_

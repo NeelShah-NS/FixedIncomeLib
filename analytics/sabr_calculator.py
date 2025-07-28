@@ -4,26 +4,25 @@ from pysabr import Hagan2002LognormalSABR
 from sabr import SabrModel
 from .sabr_top_down      import TimeDecayLognormalSABR
 from .sabr_bottom_up     import BottomUpLognormalSABR
+from .correlation_surface import CorrSurface
+from typing import Optional
+from data import DataCollection, Data2D
 
 class SABRCalculator:
 
-    def __init__(self, sabr_model: SabrModel, method: str = "bottom-up", product_type: str | None = None, product=None):
+    def __init__(self, sabr_model: SabrModel, method: str = "bottom-up", corr_surf: Optional[CorrSurface] = None, product_type: Optional[str] | None = None, product=None):
         self.model = sabr_model
         self.method = method.lower() if method is not None else None
         self.product_type = product_type
         self.product = product
-        if self.method == "bottom-up":
-            idx_key = self.product.index
-            try:
-                corr_md = self.model.dataRepo.get("CORR", idx_key)
-            except KeyError:
-                raise ValueError(
-                    "Bottom-up SABR requires a correlation surface in DataCollection under (data_type='CORR', data_convention='').\n"
-                    "Please call `dc.register_surface_dataframe(...)` on your corr‐DataFrame first."
-                )
-            self.corr_surf = corr_md
-        else:
-            self.corr_surf = None
+
+        if self.method == "bottom-up" and corr_surf is None:
+            # we expect a Data2D registered under ("corr", index)
+            md = self.model.dataCollection.get("corr", self.product.index)
+            assert isinstance(md, Data2D)
+            corr_surf = CorrSurface.from_data2d(md)
+
+        self.corr_surf = corr_surf
 
     def option_price(self, index: str, expiry: float, tenor: float, forward: float, strike: float, option_type: str) -> float:
         normal_vol, beta, nu, rho, shift, decay = self.model.get_sabr_parameters(index, expiry, tenor, product_type=self.product_type)
