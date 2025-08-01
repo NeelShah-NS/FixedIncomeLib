@@ -1,5 +1,6 @@
-from typing import Sequence
+from typing import Sequence, Union
 import numpy as np
+import pandas as pd
 from .base import MarketData
 
 class Data2D(MarketData):
@@ -12,7 +13,6 @@ class Data2D(MarketData):
         axis2: Sequence[float],
         values: Sequence[Sequence[float]]
     ):
-        
         super().__init__(data_type, data_convention)
 
         if len(values) != len(axis1):
@@ -30,3 +30,21 @@ class Data2D(MarketData):
             f"conv={self.data_convention!r}, "
             f"shape={self.values.shape})"
         )
+
+    @classmethod
+    def createDataObject(
+        cls,
+        data_type: str,
+        data_convention: str,
+        df: Union[pd.DataFrame]
+    ) -> "Data2D":
+        
+        if not isinstance(df, pd.DataFrame):
+            raise TypeError("Input must be a pandas DataFrame")
+
+        axis1 = df.index.tolist()
+        axis2 = df.columns.tolist()
+        values = df.values.tolist()
+
+        dt = data_type.lower()
+        return cls(dt, data_convention, axis1, axis2, values)

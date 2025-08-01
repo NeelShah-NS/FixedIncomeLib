@@ -6,7 +6,7 @@ from model.model import Model, ModelComponent
 from date import Date
 from utilities.numerics import Interpolator2D
 from yield_curve import YieldCurve
-from data import DataCollection, Data2D
+from data import DataCollection, Data2D, Data1D
 
 class SabrModel(Model):
     MODEL_TYPE = "IR_SABR"
@@ -46,8 +46,15 @@ class SabrModel(Model):
         ycData: DataCollection,
         ycBuildMethods: List[Dict[str, Any]]
     ) -> "SabrModel":
-        yc_dc = DataCollection()
-        yc_dc.register_zero_rate_dataframe(ycData, valueDate)
+        zero_curves = []
+        for idx_name, sub in ycData.groupby("INDEX"):
+            d1 = Data1D.createDataObject(
+                data_type="zero_rate",
+                data_convention=idx_name,
+                df=sub[["AXIS1", "VALUES"]]
+            )
+            zero_curves.append(d1)
+        yc_dc = DataCollection(zero_curves)
 
         yc = YieldCurve(valueDate, yc_dc, ycBuildMethods)
         return cls(valueDate, dataCollection, buildMethodCollection, yc)
