@@ -6,45 +6,57 @@ from model.model import Model, ModelComponent
 from date import Date
 from utilities.numerics import Interpolator2D
 from yield_curve import YieldCurve
+from data import DataCollection, Data2D, Data1D
 
 class SabrModel(Model):
     MODEL_TYPE = "IR_SABR"
     PARAMETERS = ["NORMALVOL", "BETA", "NU", "RHO"]
-
     def __init__(
         self,
         valueDate: str,
-        dataCollection: pd.DataFrame,
+        dataCollection: DataCollection,
         buildMethodCollection: List[Dict[str, Any]],
         ycModel: YieldCurve,
     ):
-        columns = set(dataCollection.columns.to_list())
-        assert 'INDEX' in columns 
-        assert 'AXIS1' in columns 
-        assert 'AXIS2' in columns
-        for p in self.PARAMETERS:
-            assert p in columns, f"SABR data must include '{p}'"
+        for bm in buildMethodCollection:
+            tgt  = bm["TARGET"]
+            vals = bm["VALUES"]
+            prod = bm.get("PRODUCT")
+            bm["NAME"] = f"{tgt}-{vals}" + (f"-{prod}" if prod else "")
+
         super().__init__(valueDate, self.MODEL_TYPE, dataCollection, buildMethodCollection)
         self._subModel = ycModel
-        
+
     @classmethod
     def from_curve(
         cls,
         valueDate: str,
-        dataCollection: pd.DataFrame,
+        dataCollection: DataCollection,
         buildMethodCollection: List[Dict[str, Any]],
-        ycModel: YieldCurve) -> "SabrModel":
+        ycModel: YieldCurve
+    ) -> "SabrModel":
         return cls(valueDate, dataCollection, buildMethodCollection, ycModel)
 
     @classmethod
     def from_data(
         cls,
         valueDate: str,
-        dataCollection: pd.DataFrame,
+        dataCollection: DataCollection,
         buildMethodCollection: List[Dict[str, Any]],
-        ycData: pd.DataFrame,
-        ycBuildMethods: List[Dict[str, Any]]) -> "SabrModel":
-        yc = YieldCurve(valueDate, ycData, ycBuildMethods)
+        ycData: DataCollection,
+        ycBuildMethods: List[Dict[str, Any]]
+    ) -> "SabrModel":
+        zero_curves = []
+        for idx_name, sub in ycData.groupby("INDEX"):
+            d1 = Data1D.createDataObject(
+                data_type="zero_rate",
+                data_convention=idx_name,
+                df=sub[["AXIS1", "VALUES"]]
+            )
+            zero_curves.append(d1)
+        yc_dc = DataCollection(zero_curves)
+
+        yc = YieldCurve(valueDate, yc_dc, ycBuildMethods)
         return cls(valueDate, dataCollection, buildMethodCollection, yc)
 
     def newModelComponent(self, build_method: Dict[str, Any]) -> ModelComponent:
@@ -55,53 +67,57 @@ class SabrModel(Model):
         index: str,
         expiry: float,
         tenor: float,
+        product_type: str | None = None
     ) -> Tuple[float, float, float, float, float, float]:
-
-        params: List[float] = []
+        suffix = f"-{product_type}".upper() if product_type else ""
+        params = []
         for p in self.PARAMETERS:
-            comp_key = f"{index}-{p}".upper()
-            comp = self.components.get(comp_key)
+            key = f"{index}-{p}{suffix}".upper()
+            comp = self.components.get(key)
             if comp is None:
-                raise KeyError(f"No SABR component found for {index} / {p}")
+                raise KeyError(f"No SABR component found for {key}")
             params.append(comp.interpolate(expiry, tenor))
-    
-        comp0 = self.components[f"{index}-NORMALVOL".upper()]
-        shift = comp0.shift
-        decay = comp0.vol_decay_speed
-
-        return (*params, shift, decay)
+        nv_key = f"{index}-NORMALVOL{suffix}".upper()
+        nv_comp = self.components[nv_key]
+        return (*params, nv_comp.shift, nv_comp.vol_decay_speed)
     
     @property
     def subModel(self):
         return self._subModel
-
+    
 class SabrModelComponent(ModelComponent):
 
-    def __init__(self, valueDate: Date, dataCollection: pd.DataFrame, buildMethod: Dict[str, Any]) -> None:
+    def __init__(
+        self,
+        valueDate: Date,
+        dataCollection: DataCollection,
+        buildMethod: Dict[str, Any]
+    ) -> None:
+        
         super().__init__(valueDate, dataCollection, buildMethod)
         self.shift           = float(buildMethod.get("SHIFT", 0.0))
         self.vol_decay_speed = float(buildMethod.get("VOL_DECAY_SPEED", 0.0))
+        self.product_type    = buildMethod.get("PRODUCT")
         self.calibrate()
 
     def calibrate(self) -> None:
-        df = self.dataCollection_[self.dataCollection_["INDEX"] == self.target_]
-        if df.empty:
-            raise ValueError(f"No data for SABR target {self.target_}")
 
-        x = df[self.buildMethod_["AXIS1"]].astype(float).values
-        y = df[self.buildMethod_["AXIS2"]].astype(float).values
-        ux = np.unique(x)
-        uy = np.unique(y)
+        param = self.buildMethod_["VALUES"]  
 
-        mat = (df.pivot_table(index=self.buildMethod_["AXIS1"], columns=self.buildMethod_["AXIS2"], values=self.buildMethod_["VALUES"]).loc[ux, uy].values)
+        md = self.dataCollection.get(param.lower(), self.target_)
+        assert isinstance(md, Data2D)
 
+        self.axis1 = np.array(md.axis1, dtype=float)  
+        self.axis2 = np.array(md.axis2, dtype=float)   
+        self.grid  = md.values                         
+
+        method = self.buildMethod_.get("INTERPOLATION", "LINEAR")
         self._interp2d = Interpolator2D(
-            axis1=ux,
-            axis2=uy,
-            values=mat,
-            method=self.buildMethod_.get("INTERPOLATION", "LINEAR")
+            axis1=self.axis1,
+            axis2=self.axis2,
+            values=self.grid,
+            method=method
         )
 
     def interpolate(self, expiry: float, tenor: float) -> float:
-
         return self._interp2d.interpolate(expiry, tenor)

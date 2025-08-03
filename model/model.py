@@ -1,8 +1,9 @@
 import pandas as pd
 import datetime as dt
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 from abc import ABCMeta, abstractmethod
 from date import Date
+from data import DataCollection
 
 ### allowed model type
 class ModelType:
@@ -35,8 +36,8 @@ class Model(metaclass=ABCMeta):
     def __init__(self, 
                 valueDate : str, 
                 modelType : str, 
-                dataCollection : pd.DataFrame, 
-                buildMethodCollection : list) -> None:
+                dataCollection : DataCollection, 
+                buildMethodCollection : List[Dict[str, Any]]) -> None:
 
         self.valueDate_ = Date(valueDate)
         self.modelType_ = ModelType(modelType)
@@ -44,7 +45,7 @@ class Model(metaclass=ABCMeta):
         self.buildMethodCollection_ = buildMethodCollection
         self.subModel_ = None
         # initialize model component
-        self.components = dict()
+        self.components: Dict[str, ModelComponent] = {}
         for this_bm in self.buildMethodCollection:
             assert isinstance(this_bm, dict)
             assert 'TARGET' in list(this_bm.keys())
@@ -54,6 +55,11 @@ class Model(metaclass=ABCMeta):
                 key = f"{tgt}-{val}".upper()
             else:
                 key = tgt.upper()
+
+            prod = this_bm.get("PRODUCT")
+            if prod:
+                key = f"{key}-{prod}".upper()
+
             self.components[key] = self.newModelComponent(this_bm)
 
     @abstractmethod
@@ -88,8 +94,8 @@ class ModelComponent(metaclass=ABCMeta):
 
     def __init__(self, 
                 valueDate : Date, 
-                dataCollection : pd.DataFrame, 
-                buildMethod : dict) -> None:
+                dataCollection : DataCollection, 
+                buildMethod :  Dict[str, Any]) -> None:
 
         self.valueDate_ = valueDate
         self.dataCollection_ = dataCollection
@@ -104,8 +110,7 @@ class ModelComponent(metaclass=ABCMeta):
     @property
     def target(self):
         return self.target_
-
-
-
-
-
+    
+    @property
+    def dataCollection(self) -> Any:
+        return self.dataCollection_

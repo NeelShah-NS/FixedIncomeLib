@@ -10,16 +10,14 @@ from model import (Model, ModelComponent, ModelType)
 from market import *
 from utilities import (Interpolator1D)
 from product.linear_products import ProductIborCashflow, ProductOvernightIndexCashflow
-
+from data import DataCollection, Data1D
 
 class YieldCurve(Model):
     MODEL_TYPE = 'YIELD_CURVE'
 
-    def __init__(self, valueDate: str, dataCollection: pd.DataFrame, buildMethodCollection: list) -> None:
-        columns = set(dataCollection.columns.to_list())
-        assert 'INDEX' in columns; assert 'AXIS1' in columns; assert 'VALUES' in columns
+    def __init__(self, valueDate: str, dataCollection: DataCollection, buildMethodCollection: list) -> None:
         super().__init__(valueDate, 'YIELD_CURVE', dataCollection, buildMethodCollection)
-    
+
     def newModelComponent(self, buildMethod: dict):
         return YieldCurveModelComponent(self.valueDate, self.dataCollection, buildMethod)
     
@@ -62,9 +60,7 @@ class YieldCurve(Model):
     def forwardOvernightIndex(self, index : str, effectiveDate : Union[Date, str], termOrTerminationDate : Union[str, TermOrTerminationDate, Date]):
         component = self.retrieveComponent(index)
         oisIndex = component.targetIndex
-
         effectiveDate_ = effectiveDate if isinstance(effectiveDate, Date) else Date(effectiveDate)
-
         if isinstance(termOrTerminationDate, Date):
             termDate = termOrTerminationDate
         else:
@@ -78,7 +74,6 @@ class YieldCurve(Model):
                 )
             else:
                 termDate = to.getDate()
-
         accrual = oisIndex.dayCounter().yearFraction(effectiveDate_, termDate)
         dfStart = self.discountFactor(index, effectiveDate_)
         dfEnd   = self.discountFactor(index, termDate)
@@ -86,7 +81,7 @@ class YieldCurve(Model):
 
 class YieldCurveModelComponent(ModelComponent):
 
-    def __init__(self, valueDate: Date, dataCollection: pd.DataFrame, buildMethod: dict) -> None:
+    def __init__(self, valueDate: Date, dataCollection: DataCollection, buildMethod: dict) -> None:
         super().__init__(valueDate, dataCollection, buildMethod)
         self.interpolationMethod_ = 'PIECEWISE_CONSTANT'
         if 'INTERPOLATION METHOD' in self.buildMethod_:
@@ -108,18 +103,27 @@ class YieldCurveModelComponent(ModelComponent):
 
     def calibrate(self):
         ### TODO: calibration to market instruments instead of directly feeding ifr
-        this_df = self.dataCollection_[self.dataCollection_['INDEX'] == self.target_]
+        md = self.dataCollection.get('zero_rate', self.target)
+        assert isinstance(md, Data1D)
         ### TODO: axis1 can be a combination of dates and tenors
         ###       for now, i assume they're all tenor based
 
-        cal = self.targetIndex_.fixingCalendar()
-        for each in this_df['AXIS1'].values.tolist():
-            this_dt = Date(cal.advance(self.valueDate_, Period(each), self.targetIndex_.businessDayConvention()))
-            self.axis1.append(this_dt)
-            self.timeToDate.append(accrued(self.valueDate_, this_dt))
-        self.stateVars = this_df['VALUES'].values.tolist()
+        rates: list[float] = []
+
+        cal = self.targetIndex.fixingCalendar()
+        bdc = self.targetIndex.businessDayConvention()
+
+        for tenor_str, r in zip(md.axis, md.values):
+            p   = Period(tenor_str)
+            dt  = Date(cal.advance(self.valueDate_, p, bdc))
+            self.axis1.append(dt) 
+            tau = accrued(self.valueDate_, dt)
+            self.timeToDate.append(tau)
+            rates.append(r)
+
+        self.stateVars       = rates
         self.ifrInterpolator = Interpolator1D(self.timeToDate, self.stateVars, self.interpolationMethod_)
-    
+
     def getStateVarInterpolator(self):
         return self.ifrInterpolator
 
