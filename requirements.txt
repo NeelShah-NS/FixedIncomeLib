@@ -1,0 +1,19 @@
+## FixedIncomeLib dependencies
+
+## Core numerical packages
+
+numpy>=1.21
+pandas>=1.3
+
+## QuantLib Python bindings
+
+QuantLib-Python>=1.33
+
+## SABR volatility modeling
+
+pysabr>=0.3.0
+
+## Jupyter and testing (optional)
+
+jupyter
+pytest
