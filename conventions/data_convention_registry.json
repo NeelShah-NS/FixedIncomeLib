@@ -1,0 +1,21 @@
+{
+  "USD-SOFR-OIS": {
+    "kind": "RFR SWAP",
+    "index": "SOFR-1B",
+    "accrual_basis": "ACT/360",
+    "accrual_period": "1Y",
+    "payment_offset": "2B",
+    "payment_biz_day_conv": "F",
+    "payment_hol_conv": "USGS",
+    "ois_compounding": "COMPOUND"
+  },
+  "SOFR-FUTURE-3M": {
+    "kind": "RFR FUTURE",
+    "index": "SOFR-1B",
+    "accrual_basis": "ACT/360",
+    "accrual_period": "3M",
+    "payment_offset": "2B",
+    "payment_biz_day_conv": "F",
+    "payment_hol_conv": "USGS"
+  }
+}

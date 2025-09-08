@@ -32,6 +32,14 @@ def isEndOfMonth(input_date : str, hol_conv : str):
 def endOfMonth(input_date : str, hol_conv : str):
     return HolidayConvention(hol_conv).value.endOfMonth(Date(input_date))
 
+def applyOffset(value_date, offset: str, hol_conv: str, biz_conv: str = "F"):
+    s = str(offset).strip().upper()
+    cal = HolidayConvention(hol_conv).value
+    if s.endswith("B"):
+        n = int(s[:-1]) if s[:-1] else 0
+        return Date(cal.advance(Date(value_date), n, ql.Days))
+    return addPeriod(value_date, s, biz_conv, hol_conv)
+
 def makeSchedule(
         start_dt : str, 
         end_dt : str, 
