@@ -11,6 +11,7 @@ from market import *
 from utilities import (Interpolator1D)
 from product.linear_products import ProductIborCashflow, ProductOvernightIndexCashflow
 from data import DataCollection, Data1D
+from builders import build_yc_calibration_basket_from_dc
 
 class YieldCurve(Model):
     MODEL_TYPE = 'YIELD_CURVE'
@@ -102,6 +103,15 @@ class YieldCurveModelComponent(ModelComponent):
         self.calibrate()
 
     def calibrate(self):
+        basket = build_yc_calibration_basket_from_dc(
+        value_date=str(self.valueDate_),
+        data_collection=self.dataCollection,
+        build_method=self.buildMethod_
+    )
+        
+    # Example build methog : bm = {"TARGET": "USD-SOFR-1B","REFERENCE": None,"INSTRUMENTS": ["SOFR-FUTURE-3M", "USD-SOFR-OIS"],"INTERPOLATION METHOD": "PIECEWISE_CONSTANT",}
+
+
         ### TODO: calibration to market instruments instead of directly feeding ifr
         md = self.dataCollection.get('zero_rate', self.target)
         assert isinstance(md, Data1D)

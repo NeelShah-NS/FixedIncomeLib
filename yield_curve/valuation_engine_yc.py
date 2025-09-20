@@ -170,6 +170,8 @@ class ValuationEngineProductRfrFuture(ValuationEngine):
         self._strike    = product.strike
         self._dir       = 1.0 if product.longOrShort.value == LongOrShort.LONG else -1.0
         self._notional  = product.notional
+        self._start    = product.effectiveDate
+        self._end      = product.maturityDate
 
         overnight_leg = ProductOvernightIndexCashflow(
             effectiveDate = product.effectiveDate,
@@ -186,7 +188,9 @@ class ValuationEngineProductRfrFuture(ValuationEngine):
         self._ois_engine.calculateValue()
         _, total_index = self._ois_engine.value_
 
-        futures_price = 100.0 * (1.0 - total_index)
+        tau = accrued(self._start, self._end)
+        r_ann = total_index / tau
+        futures_price = 100.0 * (1.0 - r_ann)
         pnl = (futures_price - self._strike) * self._notional * self._dir
         self.value_ = [self._ccy, pnl]
 
@@ -195,7 +199,6 @@ ValuationEngineRegistry().insert(
     ProductRfrFuture.prodType,
     ValuationEngineProductRfrFuture
 )
-
 
 class ValuationEngineProductPortfolio(ValuationEngine):
     
@@ -262,8 +265,9 @@ class ValuationEngineInterestRateStream(ValuationEngine):
             raise RuntimeError(f"Cannot compute annuity: fixedRate={fixed_rate}, notional={notional}")
         return self._pv_fixed / (fixed_rate * notional)
 
-    def parRate(self) -> float:
-        return self._pv_float / self.annuity()
+    def parRateOrSpread(self) -> float:
+        notional   = self.product.notional
+        return - self._pv_float / (notional * self.annuity())
 
 
 # register for both IBOR and OIS swaps
