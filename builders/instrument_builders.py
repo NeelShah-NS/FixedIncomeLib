@@ -18,14 +18,13 @@ def build_rfr_future(
     long_or_short: str,
 ):
     start_iso, end_iso = axis_entry
-    implied_rate = (100.0 - float(value)) / 100.0
     use_notional = 1.0 if notional is None else float(notional)
     return ProductRfrFuture(
         effectiveDate=start_iso,
         termOrEnd=end_iso,
         index=conv.index_key,
         compounding="COMPOUND",
-        strike=implied_rate,
+        strike=float(value),
         notional=use_notional,
         longOrShort=long_or_short,
     )

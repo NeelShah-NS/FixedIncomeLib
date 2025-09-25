@@ -311,7 +311,9 @@ class InterestRateStream(ProductPortfolio):
             elif overnightIndex:
                 cf = ProductOvernightIndexCashflow(Date(row.StartDate), Date(row.EndDate), overnightIndex, ois_compounding, ois_spread, notional, position)
             else:
-                cf = ProductBulletCashflow(Date(row.EndDate), currency, notional, position)
+                alpha_i = accrued(Date(row.StartDate), Date(row.EndDate))
+                coupon_amt = notional * (fixedRate or 0.0) * alpha_i
+                cf = ProductBulletCashflow(Date(row.EndDate), currency, coupon_amt, position)
             prods.append(cf)
             weights.append(1.0)
 
@@ -343,6 +345,7 @@ class ProductIborSwap(Product):
         self.iborIndexKey = iborIndex
         self.fixedRate_   = fixedRate
         self.payFixed_    = (position.upper() == 'SHORT')
+        float_position = "LONG" if self.payFixed_ else "SHORT"
 
         self.floatingLeg = InterestRateStream(
             startDate      = effectiveDate,
@@ -352,7 +355,7 @@ class ProductIborSwap(Product):
             overnightIndex = None,
             fixedRate      = None,
             notional       = notional,
-            position       = position,
+            position       = float_position,
             holConv        = holConv,
             bizConv        = bizConv,
             accrualBasis   = accrualBasis,
@@ -441,6 +444,7 @@ class ProductOvernightSwap(Product):
         self.overnightIndexKey = overnightIndex
         self.fixedRate_        = fixedRate
         self.payFixed_         = (position.upper() == 'SHORT')
+        float_position = "LONG" if self.payFixed_ else "SHORT"
 
         self.floatingLeg = InterestRateStream(
             startDate      = effectiveDate,
@@ -450,7 +454,7 @@ class ProductOvernightSwap(Product):
             overnightIndex = overnightIndex,
             fixedRate      = None,
             notional       = notional,
-            position       = position,
+            position       = float_position,
             holConv        = holConv,
             bizConv        = bizConv,
             accrualBasis   = accrualBasis,

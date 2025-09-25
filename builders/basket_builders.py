@@ -5,9 +5,7 @@ from conventions.data_conventions import DataConventionRegistry
 from yield_curve.calibration_basket import CalibItem, CalibrationBasket
 from . import instrument_builders                       
 from .product_builder_registry import ProductBuilderRegistry
-from data import DataCollection
-from data.yc_market_loader import build_yc_data_collection  
-
+from data import DataCollection, Data1D, build_yc_data_collection
 
 def build_yc_calibration_basket(*, value_date: str, data_objs: Iterable) -> CalibrationBasket:
     basket = CalibrationBasket()
@@ -37,31 +35,48 @@ def build_yc_calibration_basket(*, value_date: str, data_objs: Iterable) -> Cali
 # ---------------------------------------------------------------------------
 # Helpers to build a basket directly from DataCollection using the build method
 # ---------------------------------------------------------------------------
+def _collect_data1d_from_dc(dc: DataCollection, instruments: Iterable[str]) -> List[Data1D]:
+    wanted = {str(x).strip().upper() for x in instruments}
+    found: List[Data1D] = []
 
-def _filtered_market_df(dc: DataCollection, target: str, bm: Dict[str, Any]) -> pd.DataFrame:
-    if "INSTRUMENTS" not in bm or not bm["INSTRUMENTS"]:
-        raise ValueError("build_method must include a non-empty 'INSTRUMENTS' list.")
+    dm = getattr(dc, "dataMap", {})
+    for (_, dconv), obj in dm.items():
+        if not isinstance(obj, Data1D):
+            continue
+        if str(dconv).strip().upper() in wanted:
+            # Basic shape validation
+            axes = getattr(obj, "axis", None)
+            vals = getattr(obj, "values", None)
+            if axes is None or vals is None:
+                raise ValueError(f"Data1D {dconv} is missing axis/values.")
+            if len(axes) != len(vals):
+                raise ValueError(
+                    f"Data1D length mismatch for {dconv}: {len(axes)} axes vs {len(vals)} values"
+                )
+            found.append(obj)
 
-    df = dc.get('market_quote', target)
-    df = df if isinstance(df, pd.DataFrame) else pd.DataFrame(df)
-
-    inst = [str(x) for x in bm["INSTRUMENTS"]]
-    mask = df["DATA CONVENTION"].isin(inst) | df["DATA TYPE"].isin(inst)
-    df = df[mask].reset_index(drop=True)
-
-    if df.empty:
-        raise ValueError("No market rows found for requested INSTRUMENTS.")
-    return df
+    return found
 
 
 def build_yc_calibration_basket_from_dc(*,
     value_date: str,
     data_collection: DataCollection,
     build_method: Dict[str, Any]
-) -> CalibrationBasket:
-    target = str(build_method.get("TARGET", ""))
-    mdf = _filtered_market_df(data_collection, target, build_method)
+):
+    insts = build_method.get("INSTRUMENTS", [])
+    if not insts:
+        raise ValueError("build_method must include a non-empty 'INSTRUMENTS' list.")
 
-    data_objs, _ = build_yc_data_collection(mdf)
+    data_objs = _collect_data1d_from_dc(data_collection, insts)
+
+    if not data_objs:
+        dm = getattr(data_collection, "dataMap", {})
+        available = sorted({str(k[1]).strip() for k, v in dm.items() if isinstance(v, Data1D)})
+        raise KeyError(
+            "No Data1D found in DataCollection for requested conventions: "
+            f"{[str(x) for x in insts]}. "
+            f"Available Data1D conventions: {available}. "
+            "Make sure build_yc_data_collection(MARKET_DF) was called with matching 'DATA CONVENTION' values."
+        )
 
     return build_yc_calibration_basket(value_date=value_date, data_objs=data_objs)

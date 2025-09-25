@@ -26,6 +26,7 @@ ValuationEngineRegistry().insert(
 )
 
 class ValuationEngineProductIborCashflow(ValuationEngine):
+    "Returns undiscounted value"
         
     def __init__(
         self,
@@ -34,17 +35,17 @@ class ValuationEngineProductIborCashflow(ValuationEngine):
         product: ProductIborCashflow
     ):
         super().__init__(model, valuation_parameters, product)
-        self.currency    = product.currency
-        self.start_date  = product.accrualStart
-        self.end_date    = product.accrualEnd
-        self.index_name  = product.index
-        self.notional    = product.notional
-        self.direction   = 1.0 if product.longOrShort.value == LongOrShort.LONG else -1.0
-        self.accrualFactor = product.accrualFactor
+        self.currency        = product.currency
+        self.start_date      = product.accrualStart
+        self.end_date        = product.accrualEnd
+        self.index_name      = product.index
+        self.notional        = product.notional
+        self.direction       = 1.0 if product.longOrShort.value == LongOrShort.LONG else -1.0
+        self.accrualFactor   = product.accrualFactor
 
     def calculateValue(self):
         forward_rate   = self.model.forward(self.index_name, self.start_date, self.end_date)
-        pnl            = forward_rate * self.accrualFactor * self.notional * self.direction
+        pnl            = forward_rate * self.accrualFactor *self.notional * self.direction
         self.value_    = [self.currency.value.code(), pnl]
 
 ValuationEngineRegistry().insert(
@@ -53,7 +54,9 @@ ValuationEngineRegistry().insert(
     ValuationEngineProductIborCashflow
 )
 
-class ValuationEngineProductOvernightIndexCashflow(ValuationEngine):
+class ValuationEngineProductOvernightIndexCashflow(ValuationEngine):    
+    "Returns undiscounted value"
+
     def __init__(
         self,
         model: YieldCurve,
@@ -69,7 +72,7 @@ class ValuationEngineProductOvernightIndexCashflow(ValuationEngine):
         self.notional           = product.notional
         self.direction          = (1.0 if product.longOrShort.value == LongOrShort.LONG else -1.0)
         self.valuation_date     = valuation_parameters.get("valuation_date", model.valueDate)
-        self.index_manager     = IndexManager.instance()
+        self.index_manager      = IndexManager.instance()
 
     def calculateValue(self):
         realized_end_date    = min(self.valuation_date, self.termination_date)
@@ -95,14 +98,14 @@ class ValuationEngineProductOvernightIndexCashflow(ValuationEngine):
             realized_accrual = compound_factor - 1.0
 
         forward_accrual = 0.0
-        if self.valuation_date < self.termination_date:
+        stub_start = max(self.valuation_date, self.effective_date)
+        if stub_start < self.termination_date:
+            stub_fraction = accrued(stub_start, self.termination_date)
             forward_rate    = self.model.forward(
                 self.index_name,
-                self.valuation_date,
+                stub_start,
                 self.termination_date
             )
-            stub_fraction   = accrued(self.valuation_date, self.termination_date)
-
             if self.compounding_type == "COMPOUND":
                 total_factor    = compound_factor * (1.0 + forward_rate * stub_fraction)
                 forward_accrual = (total_factor - 1.0) - realized_accrual
@@ -250,13 +253,36 @@ class ValuationEngineInterestRateStream(ValuationEngine):
         )
 
     def calculateValue(self):
-        self._float_engine.calculateValue()
-        currency, pv_float = self._float_engine.value_
+        
         self._fixed_engine.calculateValue()
-        _, pv_fixed = self._fixed_engine.value_
-        self.value_ = [currency, pv_float + pv_fixed]
-        self._pv_float = pv_float
+        ccy_fixed, pv_fixed = self._fixed_engine.value_
+
+        pv_float = 0.0
+        ccy_float = ccy_fixed
+
+        if hasattr(self._float_engine, "_engines"):
+            for eng in self._float_engine._engines:
+                eng.calculateValue()
+                ccy, amt = eng.value_
+                ccy_float = ccy
+
+                prod = eng.product
+                prod_type = getattr(prod, "prodType", "")
+
+                if prod_type in ("ProductOvernightIndexCashflow", "ProductIborCashflow"):
+                    pay_dt = getattr(prod, "terminationDate", getattr(prod, "accrualEnd", None))
+                    df = self.model.discountFactor(self.funding_index, pay_dt)
+                    pv_float += amt * df
+                else:
+                    pv_float += amt
+        else:
+            self._float_engine.calculateValue()
+            ccy_float, pv_float = self._float_engine.value_
+
+        total = pv_fixed + pv_float
         self._pv_fixed = pv_fixed
+        self._pv_float = pv_float
+        self.value_ = [ccy_float, total]
 
     def annuity(self) -> float:
         fixed_rate = self.product.fixedRate
@@ -266,7 +292,7 @@ class ValuationEngineInterestRateStream(ValuationEngine):
         return self._pv_fixed / (fixed_rate * notional)
 
     def parRateOrSpread(self) -> float:
-        notional   = self.product.notional
+        notional = self.product.notional
         return - self._pv_float / (notional * self.annuity())
 
 
