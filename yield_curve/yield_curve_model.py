@@ -1,21 +1,15 @@
-import datetime as dt
-import pandas as pd
 import numpy as np
-from typing import Union, Optional
-from date import Date,makeSchedule
-import pandas as pd
-from QuantLib import InterestRateIndex
-from date import (Date, Period, TermOrTerminationDate, accrued)
-from model import (Model, ModelComponent, ModelType)
+from typing import Union, Optional, Tuple, List
+from builders.pillar_builders import (anchor_date, fixed_leg_dates_alphas, build_anchor_pillars)
+from date import Date, Period, TermOrTerminationDate, accrued
+from model import Model, ModelComponent
 from market import *
-from utilities import (Interpolator1D, gauss_newton)
-from product.linear_products import ProductIborCashflow, ProductOvernightIndexCashflow
-from data import DataCollection, Data1D
-from builders import build_yc_calibration_basket_from_dc, make_default_pillars
+from utilities import Interpolator1D, newton_1d
+from data import DataCollection
+from builders import build_yc_calibration_basket_from_dc
 from valuation import ValuationEngineRegistry
 
 DEFAULT_IFR_GUESS = 0.04
-
 
 class YieldCurve(Model):
     MODEL_TYPE = 'YIELD_CURVE'
@@ -24,7 +18,7 @@ class YieldCurve(Model):
         super().__init__(valueDate, 'YIELD_CURVE', dataCollection, buildMethodCollection)
 
     def newModelComponent(self, buildMethod: dict):
-        return YieldCurveModelComponent(self.valueDate, self.dataCollection, buildMethod, parent_model = self)
+        return YieldCurveModelComponent(self.valueDate, self.dataCollection, buildMethod, parent_model=self)
     
     def discountFactor(self, index : str, to_date : Union[str, Date]):
         this_component = self.retrieveComponent(index)
@@ -36,6 +30,25 @@ class YieldCurve(Model):
         exponent = this_component.getStateVarInterpolator().integral(0, time)
         return np.exp(-exponent)
     
+    def gradientDiscountFactor(self, index: str, to_date: Union[str, Date]) -> np.ndarray:
+        this_component = self.retrieveComponent(index)
+        to_date_ = to_date if not isinstance(to_date, str) else Date(to_date)
+        assert to_date_ >= self.valueDate_
+        time_to_date = accrued(self.valueDate_, to_date_)
+        df = float(self.discountFactor(index, to_date_))
+
+        pillar_times = np.asarray(this_component.pillarsTimeToDate, dtype=float)
+        if pillar_times.size == 0:
+            return np.zeros(0, dtype=float)
+
+        if str(getattr(this_component, "interpolationMethod_", "PIECEWISE_CONSTANT")).upper() == "PIECEWISE_CONSTANT":
+            interval_starts = np.concatenate((np.array([0.0]), pillar_times[:-1]))
+            interval_ends = pillar_times
+            overlap = np.maximum(0.0, np.minimum(time_to_date, interval_ends) - interval_starts)
+            return (-df) * overlap
+
+        return np.zeros_like(pillar_times, dtype=float)
+
     def forward(self, index : str, effectiveDate : Union[Date, str], termOrTerminationDate : Optional[Union[str, TermOrTerminationDate]]=''):
         component = self.retrieveComponent(index)
         isOIS = component.isOvernightIndex
@@ -56,11 +69,11 @@ class YieldCurve(Model):
         if isinstance(effectiveDate, str): effectiveDate_ = Date(effectiveDate)
         termDate = Date(cal.advance(effectiveDate_, tenor, liborIndex.businessDayConvention()))
         # accrued
-        accrual = liborIndex.dayCounter().yearFraction(effectiveDate_, termDate)
+        accrued = liborIndex.dayCounter().yearFraction(effectiveDate_, termDate)
         # forward rate
         dfStart = self.discountFactor(index, effectiveDate_)
         dfEnd = self.discountFactor(index, termDate)
-        return (dfStart / dfEnd - 1.) / accrual
+        return (dfStart / dfEnd - 1.) / accrued
     
     def forwardOvernightIndex(self, index : str, effectiveDate : Union[Date, str], termOrTerminationDate : Union[str, TermOrTerminationDate, Date]):
         component = self.retrieveComponent(index)
@@ -82,23 +95,21 @@ class YieldCurve(Model):
         accrual = oisIndex.dayCounter().yearFraction(effectiveDate_, termDate)
         dfStart = self.discountFactor(index, effectiveDate_)
         dfEnd   = self.discountFactor(index, termDate)
-        return ((dfStart / dfEnd) - 1.0) / accrual
+        return (dfStart / dfEnd - 1.0) / accrual
 
 class YieldCurveModelComponent(ModelComponent):
 
     def __init__(self, valueDate: Date, dataCollection: DataCollection, buildMethod: dict, parent_model=None) -> None:
         super().__init__(valueDate, dataCollection, buildMethod)
         self._model = parent_model
-        self.interpolationMethod_ = 'PIECEWISE_CONSTANT'
-        if 'INTERPOLATION METHOD' in self.buildMethod_:
-            self.interpolationMethod_ = self.buildMethod_['INTERPOLATION METHOD']
-        self.axis1 = []
-        self.timeToDate = []
+        self.interpolationMethod_ = self.buildMethod_.get('INTERPOLATION METHOD', 'PIECEWISE_CONSTANT')
+        self.axis1: List[Date] = []
+        self.pillarsTimeToDate: List[float] = []
         self.ifrInterpolator = None
         self.targetIndex_ = None
         self.isOvernightIndex_ = False
-        # i don't like this implementation
-        if '1B' in self.target_: 
+
+        if '1B' in self.target_:
             self.targetIndex_ = IndexRegistry()._instance.get(self.target_)
             self.isOvernightIndex_ = True
         else:
@@ -112,111 +123,176 @@ class YieldCurveModelComponent(ModelComponent):
             self._model.components[key.upper()] = self
 
         self.calibrate()
-    
+
     def calibrate(self):
-    #Build PRODUCTS + QUOTES basket from DataCollection using INSTRUMENTS
-        self._calibration_basket = build_yc_calibration_basket_from_dc(
+        raw_basket = build_yc_calibration_basket_from_dc(
             value_date=self.valueDate_,
             data_collection=self.dataCollection,
             build_method=self.buildMethod_,
         )
 
-        unique_pillars, times = make_default_pillars(self.valueDate_, self.targetIndex_)
-        if not times:
-            cal = self.targetIndex_.fixingCalendar()
-            bdc = self.targetIndex_.businessDayConvention()
-            one_day = Date(cal.advance(self.valueDate_, Period("1D"), bdc))
-            unique_pillars = [one_day]
-            times = [accrued(self.valueDate_, one_day)]
-        
-        theta0 = DEFAULT_IFR_GUESS
-        self.axis1 = unique_pillars
-        self.timeToDate = times
-        self.stateVars = [theta0] * len(times)
-        self.ifrInterpolator = Interpolator1D(self.timeToDate, self.stateVars, self.interpolationMethod_)
+        axis1, times, kept_items = build_anchor_pillars(list(raw_basket),self.valueDate_)
+        self.axis1 = axis1
+        self.pillarsTimeToDate = times
 
-        #Calibration residuals via ValuationEngineRegistry
+        # Initial IFR guess
+        theta0 = DEFAULT_IFR_GUESS
+        self.stateVars = [theta0] * len(times)
+        self.ifrInterpolator = Interpolator1D(self.pillarsTimeToDate, self.stateVars, self.interpolationMethod_)
+
         vp = {"FUNDING INDEX": self.target_, "valuation_date": self.valueDate_}
         reg = ValuationEngineRegistry()
+        engines = [reg.new_valuation_engine(self._model, vp, it.product) for it in kept_items]
 
-        future_engines = []
-        swap_engines = []
-        for it in self._calibration_basket:
-            prod = it.product
+        def _install_theta(theta_vec: np.ndarray) -> None:
+            self.stateVars = list(np.asarray(theta_vec, float))
+            self.ifrInterpolator = Interpolator1D(self.pillarsTimeToDate, self.stateVars, self.interpolationMethod_)
+
+        def _df_and_grad(d: Date) -> Tuple[float, np.ndarray]:
+            df = self._model.discountFactor(self.target_, d)
+            g = self._model.gradientDiscountFactor(self.target_, d)
+            return float(df), np.asarray(g, float)
+
+        def _instrument_k(it) -> int:
+            """Map instrument to pillar index via its anchor date."""
+            anc = anchor_date(it.product)
+            t = float(accrued(self.valueDate_, anc))
+            for j, tj in enumerate(self.pillarsTimeToDate):
+                if t <= tj + 1e-14:
+                    return j
+            return len(self.pillarsTimeToDate) - 1
+
+        # ---------- residuals ----------
+
+        def _residual(eng) -> float:
+            prod = eng.product
             typ = str(getattr(prod, "prodType", "")).upper()
-            eng = reg.new_valuation_engine(self._model, vp, prod)
-            if "FUTURE" in typ:
-                future_engines.append(eng)
-            elif "SWAP" in typ:
-                swap_engines.append(eng)
 
-        def _install_theta(theta_vec):
-            self.stateVars = list(theta_vec)
-            self.ifrInterpolator = Interpolator1D(self.timeToDate, self.stateVars, self.interpolationMethod_)
-
-        def residuals_fn(theta_vec):
-            _install_theta(theta_vec)
-            r = []
-            # Futures: model_price - market_price
-            for eng in future_engines:
-                eng.calculateValue()
-                r.append(float(eng.value_[1]))
-            # Swaps: par - fixedRate
-            for eng in swap_engines:
+            if "SWAP" in typ:
                 eng.calculateValue()
                 par = float(eng.parRateOrSpread())
-                r.append(par - float(eng.product.fixedRate))
-            return np.asarray(r, dtype=float)
+                K = float(getattr(prod, "fixedRate"))
+                return par - K
 
-        #Solve for IFRs
-        theta0_vec = np.array(self.stateVars, dtype=float)
-        theta_sol, final_residuals = gauss_newton(
-            residuals_fn=residuals_fn,
-            initial_params=theta0_vec,
-            max_iterations=int(self.buildMethod_.get("MAX_ITERS", 25)),
-            lower_bound=float(self.buildMethod_.get("IFR_LB", -0.05)),
-            upper_bound=float(self.buildMethod_.get("IFR_UB", 0.15)),
-            tolerance=float(self.buildMethod_.get("TOL", 1e-10)),
-            fd_step=float(self.buildMethod_.get("FD_EPS", 1e-6)),
-        )
-        _install_theta(theta_sol)
-        if bool(self.buildMethod_.get("DEBUG", False)):
-            self._debug("\n[YC DEBUG] Calibrated IFRs at pillars")
-            header = f"{'idx':>3}  {'pillar':<12}  {'t (yrs)':>10}  {'theta*':>10}  {'∫θ du':>12}  {'DF(t)':>12}"
-            self._debug(header)
-            self._debug("-" * len(header))
-            for i, (d, t, th) in enumerate(zip(self.axis1, self.timeToDate, self.stateVars)):
-                integral = self.ifrInterpolator.integral(0.0, float(t))
-                df = np.exp(-integral)
-                self._debug(f"{i:3d}  {self._dstr(d):<12}  {t:10.10f}  {th:10.8f}  {integral:12.10f}  {df:12.10f}")
+            elif "FUTURE" in typ:
+                S = getattr(prod, "effectiveDate")
+                E = getattr(prod, "maturityDate")
+                idx = getattr(prod, "index", self.target_)
+                f_model = float(self._model.forward(idx, S, E))
+                strike = float(getattr(prod, "strike"))
+                f_mkt = (100.0 - strike) / 100.0
+                return f_model - f_mkt
 
+            else:
+                raise RuntimeError(f"Unsupported product type: {typ}")
 
-        self._calibration_summary = {
-    "rmse": float(np.sqrt(np.mean(final_residuals**2))),
-    "max_abs": float(np.max(np.abs(final_residuals))),
-    "n_residuals": int(final_residuals.size),
-    "n_parameters": len(theta_sol),
-}
-    
-    def _dstr(self, d):
-        """Best-effort date -> string."""
-        # Try common names first, then fall back
-        for attr in ("toString", "ISO", "isoformat", "__str__"):
-            f = getattr(d, attr, None)
-            if callable(f):
-                try:
-                    return f()
-                except:
-                    pass
-        return str(d)
+        # derivatives : Change once CalculateRisk() is implemented in valuation engines
+        def _derivative_row(eng) -> np.ndarray:
+            prod = eng.product
+            typ = str(getattr(prod, "prodType", "")).upper()
 
-    def _debug(self, *args):
-        """Opt-in debug print if build method contains DEBUG=True."""
-        if bool(self.buildMethod_.get("DEBUG", False)):
-            print(*args)
+            if "FUTURE" in typ:
+                S = getattr(prod, "effectiveDate", None)
+                E = getattr(prod, "maturityDate", None)
+                if S is None or E is None:
+                    raise RuntimeError(f"Future missing effective/maturity dates: {type(prod).__name__}")
+
+                accrualFactor = getattr(prod, "accrualFactor", None)
+                if accrualFactor is None:
+                    try:
+                        accrualFactor = float(self.targetIndex_.dayCounter().yearFraction(S, E))
+                    except Exception:
+                        accrualFactor = float(accrued(S, E))
+                else:
+                    accrualFactor = float(accrualFactor)
+
+                DF_S, gS = _df_and_grad(S)
+                DF_E, gE = _df_and_grad(E)
+                dF = (gS / DF_E) - (DF_S * gE) / (DF_E * DF_E)
+                dF /= accrualFactor
+                return dF.astype(float)
+
+            elif "SWAP" in typ:
+                dates, alphas = fixed_leg_dates_alphas(prod, self.valueDate_)
+
+                DFs, Gs = [], []
+                for di in dates:
+                    df_i, g_i = _df_and_grad(di)
+                    DFs.append(float(df_i))
+                    Gs.append(np.asarray(g_i, float))
+                alphas = np.asarray(alphas, float)
+                DFs = np.asarray(DFs, float)
+                Gs = np.asarray(Gs, float)
+
+                A = float((alphas * DFs).sum())   
+                B = 1.0 - float(DFs[-1])          
+                dA = (Gs * alphas[:, None]).sum(axis=0)
+                dB = -Gs[-1]
+                dR = (dB * A - B * dA) / (A * A)
+                return dR.astype(float)
+
+            else:
+                raise RuntimeError(f"Unsupported product type for derivative: {typ}")
+
+        def _check_single_new_bucket(eng, k: int, solved_mask: np.ndarray) -> bool:
+            drow = _derivative_row(eng)  # (N,)
+            touched = np.where(np.abs(drow) > 1e-14)[0]
+            new_touch = [i for i in touched if not solved_mask[i]]
+            return (len(new_touch) == 1 and new_touch[0] == k)
+
+        theta = np.array(self.stateVars, float)
+        solved = np.zeros(len(self.pillarsTimeToDate), dtype=bool)
+
+        tol_r = float(self.buildMethod_.get("LOCAL_TOL", 1e-12))
+        maxit = int(self.buildMethod_.get("MAX_LOCAL_ITERS", 100))
+        touch_tol = float(self.buildMethod_.get("TOUCH_TOL", 1e-12))
+
+        for idx, eng in enumerate(engines):
+            it = kept_items[idx]
+            k = _instrument_k(it)
+
+            if k > 0 and not solved[k - 1]:
+                raise RuntimeError(f"Instrument for pillar k={k} arrives before pillar k={k-1} solved.")
+
+            if not _check_single_new_bucket(eng, k, solved):
+                policy = str(self.buildMethod_.get("ON_MULTI_BUCKET", "ERROR")).upper()  # ERROR | DROP
+                if policy == "DROP":
+                    continue
+                else:
+                    typ = str(getattr(eng.product, "prodType", ""))
+                    raise RuntimeError(f"Instrument {typ} at pillar k={k} touches more than one new bucket.")
+
+            def residual_theta(x: float) -> float:
+                theta_tmp = theta.copy()
+                theta_tmp[k] = float(x)
+                _install_theta(theta_tmp)
+                return _residual(eng)
+
+            def derivative_theta(x: float) -> float:
+                theta_tmp = theta.copy()
+                theta_tmp[k] = float(x)
+                _install_theta(theta_tmp)
+                drow = _derivative_row(eng)
+                return float(drow[k])
+            
+            x_opt, max_iter, residual = newton_1d(
+                residual=residual_theta,
+                derivative=derivative_theta,
+                initial_guess=float(theta[k]),
+                tol=tol_r,
+                max_iter=maxit,
+                min_slope=touch_tol,
+            )
+
+            theta[k] = x_opt
+            solved[k] = True
+            _install_theta(theta)
+
+        self.stateVars = list(theta)
+        self.ifrInterpolator = Interpolator1D(self.pillarsTimeToDate, self.stateVars, self.interpolationMethod_)
 
     def getStateVarInterpolator(self):
-            return self.ifrInterpolator
+        return self.ifrInterpolator
 
     @property
     def isOvernightIndex(self):
@@ -225,9 +301,7 @@ class YieldCurveModelComponent(ModelComponent):
     @property
     def targetIndex(self):
         return self.targetIndex_
-    
+
     @property
     def target(self):
         return getattr(self, "target_", None)
-    
-    

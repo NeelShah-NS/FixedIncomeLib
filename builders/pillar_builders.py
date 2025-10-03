@@ -1,33 +1,57 @@
-from date import Date, Period, accrued
+from typing import List, Tuple
+import numpy as np
+from date import Date, accrued
 
-def make_default_pillars(value_date, target_index):
-    cal = target_index.fixingCalendar()
-    bdc = target_index.businessDayConvention()
+def _num_products(portfolio) -> int:
+    num = getattr(portfolio, "numProducts", getattr(portfolio, "count", None))
+    if num is None:
+        raise AttributeError("Portfolio missing numProducts/count.")
+    return int(num() if callable(num) else num)
 
-    dates = []
-    # 3M → 3Y
-    for m in range(3, 36 + 1, 3):
-        dates.append(Date(cal.advance(value_date, Period(f"{m}M"), bdc)))
-    # annual 4Y → 10Y
-    for y in range(4, 10 + 1):
-        dates.append(Date(cal.advance(value_date, Period(f"{y}Y"), bdc)))
-    # long end
-    for y in [15, 20, 25, 30, 40, 50, 60]:
-        dates.append(Date(cal.advance(value_date, Period(f"{y}Y"), bdc)))
+def anchor_date(product) -> Date:
+    return product.lastDate
 
-    seen, uniq = set(), []
-    for d in dates:
-        if not hasattr(d, "serialNumber"):
-            d = Date(d)
-        k = int(d.serialNumber())
-        if k not in seen:
-            seen.add(k)
-            uniq.append(d)
-    uniq.sort(key=lambda d: accrued(value_date, d))
+def fixed_leg_dates_alphas(product, value_date: Date) -> Tuple[List[Date], np.ndarray]:
+    fixed_leg = product.fixedLeg
+    num_cfs   = fixed_leg.numProducts
+    if num_cfs <= 0:
+        raise RuntimeError("Fixed leg is empty.")
 
-    times = [accrued(value_date, d) for d in uniq]
-    if not times:
-        one_day = Date(cal.advance(value_date, Period("1D"), bdc))
-        uniq = [one_day]
-        times = [accrued(value_date, one_day)]
-    return uniq, times
+    swap_start: Date = product.effectiveDate
+    payment_dates: List[Date] = []
+    accrual_factors: List[float] = []
+
+    period_start = swap_start
+    for i in range(num_cfs):
+        payment_date = fixed_leg.element(i).lastDate
+        accrual_factors.append(float(accrued(period_start, payment_date)))
+        payment_dates.append(payment_date)
+        period_start = payment_date
+
+    return payment_dates, np.asarray(accrual_factors, dtype=float)
+
+def build_anchor_pillars(items: List, value_date: Date) -> Tuple[List[Date], List[float], List]:
+    candidates = []
+    for basket_item in items:
+        anchor_dt = anchor_date(basket_item.product)
+        t_anchor  = float(accrued(value_date, anchor_dt))
+        candidates.append((t_anchor, int(anchor_dt.serialNumber()), anchor_dt, basket_item))
+    candidates.sort(key=lambda x: (x[0], x[1]))
+
+    pillar_dates: List[Date] = []
+    pillar_times: List[float] = []
+    kept_items: List = []
+    last_time = None
+    last_serial = None
+    for t_anchor, serial, anchor_dt, basket_item in candidates:
+        if last_time is not None and (t_anchor <= last_time or serial <= last_serial):
+            prev_dt = pillar_dates[-1]
+            raise RuntimeError(f"Non-increasing anchors: {anchor_dt} after {prev_dt}.")
+        pillar_dates.append(anchor_dt)
+        pillar_times.append(t_anchor)
+        kept_items.append(basket_item)
+        last_time, last_serial = t_anchor, serial
+
+    if not pillar_times:
+        raise RuntimeError("No pillars produced.")
+    return pillar_dates, pillar_times, kept_items
