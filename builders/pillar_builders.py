@@ -2,33 +2,8 @@ from typing import List, Tuple
 import numpy as np
 from date import Date, accrued
 
-def _num_products(portfolio) -> int:
-    num = getattr(portfolio, "numProducts", getattr(portfolio, "count", None))
-    if num is None:
-        raise AttributeError("Portfolio missing numProducts/count.")
-    return int(num() if callable(num) else num)
-
 def anchor_date(product) -> Date:
     return product.lastDate
-
-def fixed_leg_dates_alphas(product, value_date: Date) -> Tuple[List[Date], np.ndarray]:
-    fixed_leg = product.fixedLeg
-    num_cfs   = fixed_leg.numProducts
-    if num_cfs <= 0:
-        raise RuntimeError("Fixed leg is empty.")
-
-    swap_start: Date = product.effectiveDate
-    payment_dates: List[Date] = []
-    accrual_factors: List[float] = []
-
-    period_start = swap_start
-    for i in range(num_cfs):
-        payment_date = fixed_leg.element(i).lastDate
-        accrual_factors.append(float(accrued(period_start, payment_date)))
-        payment_dates.append(payment_date)
-        period_start = payment_date
-
-    return payment_dates, np.asarray(accrual_factors, dtype=float)
 
 def build_anchor_pillars(items: List, value_date: Date) -> Tuple[List[Date], List[float], List]:
     candidates = []

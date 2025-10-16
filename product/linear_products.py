@@ -19,12 +19,19 @@ class ProductBulletCashflow(Product):
                  terminationDate : str, 
                  currency : str,
                  notional : float,
-                 longOrShort : str) -> None:
+                 longOrShort : str,
+                 paymentDate: Optional[Union[str, Date]] = None) -> None:
         super().__init__(Date(terminationDate), Date(terminationDate), notional, longOrShort, Currency(currency))
     
+        self.paymentDate_ = Date(terminationDate) if paymentDate is None else (paymentDate if isinstance(paymentDate, Date) else Date(paymentDate))
+
     @property
     def terminationDate(self):
         return self.lastDate
+    
+    @property
+    def paymentDate(self) -> Date:
+        return self.paymentDate_
 
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
@@ -38,7 +45,8 @@ class ProductIborCashflow(Product):
                  index: str,
                  spread: float,
                  notional: float,
-                 longOrShort: str) -> None:
+                 longOrShort: str,
+                 paymentDate: Optional[Union[str, Date]] = None) -> None:
         
         self.accrualStart_ = Date(startDate)
         self.accrualEnd_   = Date(endDate)
@@ -51,6 +59,7 @@ class ProductIborCashflow(Product):
         self.spread_ = spread
         ccy_code = self.iborIndex_.currency().code()
         super().__init__(self.accrualStart_, self.accrualEnd_, notional, longOrShort, Currency(ccy_code))
+        self._paymentDate = (self.accrualEnd_ if paymentDate is None else (paymentDate if isinstance(paymentDate, Date) else Date(paymentDate)))
 
     @property
     def index(self):
@@ -71,6 +80,10 @@ class ProductIborCashflow(Product):
     @property
     def accrualFactor(self) -> float:
         return accrued(self.accrualStart_, self.accrualEnd_)
+    
+    @property
+    def paymentDate(self) -> Date:
+        return self._paymentDate
 
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
@@ -86,8 +99,9 @@ class ProductOvernightIndexCashflow(Product):
         compounding: str,
         spread: float,
         notional: float,
-        longOrShort: str
-    ) -> None:
+        longOrShort: str,
+        paymentDate: Optional[Union[str, Date]] = None) -> None:
+        
         self.effDate_ = Date(effectiveDate)
         self.indexKey_   = index
         self.oisIndex_  = IndexRegistry().get(index)
@@ -119,6 +133,8 @@ class ProductOvernightIndexCashflow(Product):
             Currency(ccy_code)
         )
 
+        self._paymentDate = (self.endDate_ if paymentDate is None else (paymentDate if isinstance(paymentDate, Date) else Date(paymentDate)))
+
     @property
     def index(self) -> str:
         return self.indexKey_
@@ -138,6 +154,10 @@ class ProductOvernightIndexCashflow(Product):
     @property
     def spread(self) -> float:
         return self.spread_
+    
+    @property
+    def paymentDate(self) -> Date:
+        return self._paymentDate
 
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
@@ -307,13 +327,13 @@ class InterestRateStream(ProductPortfolio):
         prods, weights = [], []
         for row in schedule.itertuples(index=False):
             if iborIndex:
-                cf = ProductIborCashflow(Date(row.StartDate), Date(row.EndDate), iborIndex, 0.0, notional, position)
+                cf = ProductIborCashflow(Date(row.StartDate), Date(row.EndDate), iborIndex, 0.0, notional, position, Date(row.PaymentDate))
             elif overnightIndex:
-                cf = ProductOvernightIndexCashflow(Date(row.StartDate), Date(row.EndDate), overnightIndex, ois_compounding, ois_spread, notional, position)
+                cf = ProductOvernightIndexCashflow(Date(row.StartDate), Date(row.EndDate), overnightIndex, ois_compounding, ois_spread, notional, position, Date(row.PaymentDate))
             else:
                 alpha_i = accrued(Date(row.StartDate), Date(row.EndDate))
                 coupon_amt = notional * (fixedRate or 0.0) * alpha_i
-                cf = ProductBulletCashflow(Date(row.EndDate), currency, coupon_amt, position)
+                cf = ProductBulletCashflow(Date(row.EndDate), currency, coupon_amt, position, Date(row.PaymentDate))
             prods.append(cf)
             weights.append(1.0)
 

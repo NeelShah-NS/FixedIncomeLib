@@ -66,6 +66,16 @@ class Model(metaclass=ABCMeta):
     def newModelComponent(self, buildMethod : dict):
         pass
 
+    @abstractmethod
+    def jacobian(self):
+        """
+        Build the model Jacobian J_{X^M / X^I}.
+        Rows = calibration instruments across all components.
+        Columns = internal model parameters (concatenated by component).
+        """
+        raise NotImplementedError
+    
+
     @property    
     def valueDate(self):
         return self.valueDate_
@@ -88,6 +98,12 @@ class Model(metaclass=ABCMeta):
 
     def retrieveComponent(self, target : str):
         return self.components.get(target.upper())
+    
+    def perturbModelParameter(self, target: str, state_var_index: int, perturb_size: float) -> None:
+        comp = self.retrieveComponent(target)
+        if comp is None:
+            raise KeyError(f"Component '{target}' not found. Known: {list(self.components.keys())}")
+        comp.perturbModelParameter(state_var_index, perturb_size)
 
 ### one model can have multiple components
 class ModelComponent(metaclass=ABCMeta):
@@ -101,7 +117,7 @@ class ModelComponent(metaclass=ABCMeta):
         self.dataCollection_ = dataCollection
         self.buildMethod_ = buildMethod
         self.target_ = buildMethod['TARGET']
-        self.stateVars_ = []
+        self.stateVars_ : List[float] = []
 
     @abstractmethod
     def calibrate(self):
@@ -114,3 +130,11 @@ class ModelComponent(metaclass=ABCMeta):
     @property
     def dataCollection(self) -> Any:
         return self.dataCollection_
+    
+    def perturbModelParameter(self, state_var_index: int, perturb_size: float) -> None:
+        arr = self.stateVars_
+        n = len(arr)
+        if not (0 <= state_var_index < n):
+            raise IndexError(f"{self.target}: state_var_index {state_var_index} out of range [0,{n-1}]")
+        
+        arr[state_var_index] = float(arr[state_var_index]) + float(perturb_size)

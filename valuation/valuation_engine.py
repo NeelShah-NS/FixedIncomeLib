@@ -1,4 +1,6 @@
 from abc import ABCMeta, abstractmethod
+from typing import Dict
+import numpy as np
 from model import (Model)
 from product import (Product)
 
@@ -11,6 +13,7 @@ class ValuationEngine(metaclass=ABCMeta):
         self.valParams = valuationParameters
         self.valueDate = self.model.valueDate
         self.value_ = None
+        self.firstOrderRisk_ = None
 
     @abstractmethod
     def calculateValue(self):
@@ -18,8 +21,12 @@ class ValuationEngine(metaclass=ABCMeta):
     
     # this should be mandatory as well, @abstractmethod
     # TODO
-    def calculateRisk(self):
-        pass
+    def calculateFirstOrderRisk(self,
+                                gradient=None,
+                                scaler: float = 1.0,
+                                accumulate: bool = False,
+                                ) -> None:
+        return
 
     # optional
     def parRateOrSpread(self):
@@ -32,6 +39,7 @@ class ValuationEngine(metaclass=ABCMeta):
     @property
     def value(self):
         return self.value_
-
     
-
+    @property
+    def firstOrderRisk(self):
+        return self.firstOrderRisk_

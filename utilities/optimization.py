@@ -1,25 +1,26 @@
-from typing import Callable, Tuple
-import numpy as np
+from typing import Callable
 
-def newton_1d(
-        residual: Callable[[float], float],
-        derivative: Callable[[float], float],
-        initial_guess: float,
-        tol: float = 1e-12,
-        max_iter: int = 100,
-        min_slope: float = 1e-12,   # << added
-    ) -> Tuple[float, int, float]:
-    x = float(initial_guess)
-    for it in range(1, max_iter + 1):
-        r = residual(x)
-        if not np.isfinite(r):
-            raise RuntimeError("Non-finite residual in Newton step.")
-        if abs(r) <= tol:
-            return x, it, r
-        d = derivative(x)
-        if not np.isfinite(d) or abs(d) <= min_slope:
-            raise RuntimeError("Near-zero or non-finite slope in Newton step.")
-        x = x - r / d
-    # return last state if not converged
-    r = residual(x)
-    return x, max_iter, r
+def simple_solver(
+    residual_fn: Callable[[float], float],
+    x_prev: float,
+    x_curr: float,
+    tolerance: float = 1e-12,
+    max_iter: int = 50,
+) -> float:
+
+    f_prev = float(residual_fn(x_prev))
+    f_curr = float(residual_fn(x_curr))
+
+    for iteration in range(max_iter):
+        slope_est = (f_curr - f_prev)
+        if slope_est == 0.0:
+            slope_est = 1e-18  
+        x_next = x_curr - f_curr * (x_curr - x_prev) / slope_est
+
+        if abs(x_next - x_curr) <= tolerance * (1.0 + abs(x_curr)):
+            return float(x_next)
+
+        x_prev, f_prev = x_curr, f_curr
+        x_curr, f_curr = x_next, float(residual_fn(x_next))
+
+    return float(x_curr)

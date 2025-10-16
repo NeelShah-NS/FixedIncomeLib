@@ -1,3 +1,5 @@
+from typing import Optional
+import numpy as np
 import pandas as pd
 from .yield_curve_model import YieldCurve
 from product import (LongOrShort, ProductIborCashflow, ProductBulletCashflow, ProductFuture, ProductRfrFuture,ProductIborSwap,ProductOvernightSwap,
@@ -10,7 +12,7 @@ class ValuationEngineProductBulletCashflow(ValuationEngine):
     def __init__(self, model : YieldCurve, valuationParameters : dict, product : ProductBulletCashflow):
             super().__init__(model, valuationParameters, product)
             self.currency = product.currency
-            self.maturity = product.terminationDate
+            self.maturity = product.paymentDate_
             self.buyOrSell = 1. if product.longOrShort.value == LongOrShort.LONG else -1.
             self.notional = product.notional
             self.fundingIndex = valuationParameters['FUNDING INDEX']
@@ -75,16 +77,16 @@ class ValuationEngineProductOvernightIndexCashflow(ValuationEngine):
         self.index_manager      = IndexManager.instance()
 
     def calculateValue(self):
-        realized_end_date    = min(self.valuation_date, self.termination_date)
+        realizedend_date    = min(self.valuation_date, self.termination_date)
         historical_fixings   = self.index_manager.get_fixings(
             self.index_name,
             self.effective_date,
-            realized_end_date
+            realizedend_date
         )
 
-        compound_factor      = 1.0
-        realized_accrual     = 0.0
-        previous_accrual_date= self.effective_date
+        compound_factor       = 1.0
+        realized_accrual      = 0.0
+        previous_accrual_date = self.effective_date
 
         for fixing_date, fixing_rate in sorted(historical_fixings.items()):
             period_fraction = accrued(previous_accrual_date, fixing_date)
@@ -98,12 +100,12 @@ class ValuationEngineProductOvernightIndexCashflow(ValuationEngine):
             realized_accrual = compound_factor - 1.0
 
         forward_accrual = 0.0
-        stub_start = max(self.valuation_date, self.effective_date)
-        if stub_start < self.termination_date:
-            stub_fraction = accrued(stub_start, self.termination_date)
+        stubstart = max(self.valuation_date, self.effective_date)
+        if stubstart < self.termination_date:
+            stub_fraction = accrued(stubstart, self.termination_date)
             forward_rate    = self.model.forward(
                 self.index_name,
-                stub_start,
+                stubstart,
                 self.termination_date
             )
             if self.compounding_type == "COMPOUND":
@@ -131,11 +133,11 @@ class ValuationEngineProductFuture(ValuationEngine):
             valuation_parameters: dict,
             product: ProductFuture):
         super().__init__(model, valuation_parameters, product)
-        self._ccy       = product.currency.value.code()
-        self._strike    = product.strike
-        self._dir       = 1.0 if product.longOrShort.value == LongOrShort.LONG else -1.0
-        self._notional  = product.notional
-        self._accrualFactor = product.accrualFactor
+        self.currency      = product.currency.value.code()
+        self.strike        = product.strike
+        self.direction     = 1.0 if product.longOrShort.value == LongOrShort.LONG else -1.0
+        self.notional      = product.notional
+        self.accrualFactor = product.accrualFactor
 
         ibor_leg = ProductIborCashflow(
             startDate   = product.effectiveDate,
@@ -151,10 +153,24 @@ class ValuationEngineProductFuture(ValuationEngine):
         
         self._ibor_engine.calculateValue()
         _, pv_unit = self._ibor_engine.value_
-        forward_rate = pv_unit / self._accrualFactor
+        forward_rate = pv_unit / self.accrualFactor
         futures_price = 100.0 * (1.0 - forward_rate)
-        pnl = (futures_price - self._strike) * self._notional * self._dir
-        self.value_ = [self._ccy, pnl]
+        pnl = (futures_price - self.strike) * self.notional * self.direction
+        self.value_ = [self.currency, pnl]
+
+    def calculateFirstOrderRisk(self, gradient: Optional[np.ndarray] = None, scaler: float = 1.0, accumulate: bool = False):
+        scale = (-100 * self.direction * self.notional) * float(scaler)
+        if gradient is None:
+            gradient = self.model.gradient_
+        self.model.forwardRateGradientWrtModelParameters(index = self.product.index,
+                                                         start_time = self.start,
+                                                         end_time = self.end,
+                                                         gradient = gradient,
+                                                         scaler = scale,
+                                                         accumulate = accumulate)
+        
+        self.firstOrderRisk_ = self.model.getGradientArray()
+        
 
 ValuationEngineRegistry().insert(
     YieldCurve.modelType,
@@ -169,12 +185,12 @@ class ValuationEngineProductRfrFuture(ValuationEngine):
                 valuation_parameters: dict,
                 product: ProductRfrFuture):
         super().__init__(model, valuation_parameters, product)
-        self._ccy       = product.currency.value.code()
-        self._strike    = product.strike
-        self._dir       = 1.0 if product.longOrShort.value == LongOrShort.LONG else -1.0
-        self._notional  = product.notional
-        self._start    = product.effectiveDate
-        self._end      = product.maturityDate
+        self.currency    = product.currency.value.code()
+        self.strike      = product.strike
+        self.direction   = 1.0 if product.longOrShort.value == LongOrShort.LONG else -1.0
+        self.notional    = product.notional
+        self.start       = product.effectiveDate
+        self.end         = product.maturityDate
 
         overnight_leg = ProductOvernightIndexCashflow(
             effectiveDate = product.effectiveDate,
@@ -191,11 +207,24 @@ class ValuationEngineProductRfrFuture(ValuationEngine):
         self._ois_engine.calculateValue()
         _, total_index = self._ois_engine.value_
 
-        tau = accrued(self._start, self._end)
-        r_ann = total_index / tau
+        accrualFactor = accrued(self.start, self.end)
+        r_ann = total_index / accrualFactor
         futures_price = 100.0 * (1.0 - r_ann)
-        pnl = (futures_price - self._strike) * self._notional * self._dir
-        self.value_ = [self._ccy, pnl]
+        pnl = (futures_price - self.strike) * self.notional * self.direction
+        self.value_ = [self.currency, pnl]
+    
+    def calculateFirstOrderRisk(self, gradient: Optional[np.ndarray] = None, scaler: float = 1.0, accumulate: bool = False):
+        scale = (-100 * self.direction * self.notional) * float(scaler)
+        if gradient is None:
+            gradient = self.model.gradient_
+        self.model.forwardRateGradientWrtModelParameters(index = self.product.index,
+                                                         start_time = self.start,
+                                                         end_time = self.end,
+                                                         gradient = gradient,
+                                                         scaler = scale,
+                                                         accumulate = accumulate)
+        
+        self.firstOrderRisk_ = self.model.getGradientArray()
 
 ValuationEngineRegistry().insert(
     YieldCurve.modelType,
@@ -243,14 +272,13 @@ class ValuationEngineInterestRateStream(ValuationEngine):
                 "When valuing swaps, 'FUNDING INDEX' must be provided in valuation_parameters"
             )
         self.funding_index = valuation_parameters["FUNDING INDEX"]
+        self.currency = product.currency.value.code()
+        self.direction = 1.0 if product.longOrShort.value == LongOrShort.LONG else -1.0
+        self.notional = float(product.notional)
         child_vp = dict(valuation_parameters)
 
-        self._float_engine = ValuationEngineRegistry().new_valuation_engine(
-            model, child_vp, product.floatingLeg
-        )
-        self._fixed_engine = ValuationEngineRegistry().new_valuation_engine(
-            model, child_vp, product.fixedLeg
-        )
+        self._float_engine = ValuationEngineRegistry().new_valuation_engine(model, child_vp, product.floatingLeg)
+        self._fixed_engine = ValuationEngineRegistry().new_valuation_engine(model, child_vp, product.fixedLeg)
 
     def calculateValue(self):
         
@@ -294,6 +322,93 @@ class ValuationEngineInterestRateStream(ValuationEngine):
     def parRateOrSpread(self) -> float:
         notional = self.product.notional
         return - self._pv_float / (notional * self.annuity())
+    
+    def calculateFirstOrderRisk(self, gradient=None, scaler=1.0, accumulate=False):
+
+        if gradient is None:
+            gradient = self.model.gradient_
+            if not accumulate:
+                self.model.clearGradient()
+        
+        sign_parent = self.direction
+
+        #FIXED LEG
+        if hasattr(self._fixed_engine, "_engines"):
+            for eng in self._fixed_engine._engines:
+                child_product = eng.product
+                child_product_sign = 1.0 if child_product.longOrShort.value == LongOrShort.LONG else -1.0
+                fixed_coupon_undiscounted = child_product_sign * float(child_product.notional)
+                pay_date = child_product.paymentDate
+
+                if pay_date is None:
+                    pay_date = child_product.lastDate
+                
+                scale = float(scaler) * fixed_coupon_undiscounted
+                self.model.discountFactorGradientWrtModelParameters(index=self.funding_index,
+                                                                    to_date=pay_date,
+                                                                    gradient=gradient,
+                                                                    scaler=scale,
+                                                                    accumulate=True)
+        else:
+            pass
+
+        if hasattr(self._float_engine, "_engines"):
+            for eng in self._float_engine._engines:
+                child_product = eng.product
+                child_product_sign = 1.0 if child_product.longOrShort.value == LongOrShort.LONG else -1.0
+
+                eng.calculateValue()
+                _, floating_coupon_undiscounted = eng.value_
+                floating_coupon_undiscounted = float(floating_coupon_undiscounted)
+
+                pay_date = child_product.paymentDate
+        
+                if pay_date is None:
+                    pay_date = child_product.lastDate
+                
+                #(1) dDF term - Common for ibor and ois
+                scale = float(scaler) * floating_coupon_undiscounted
+                self.model.discountFactorGradientWrtModelParameters(index=self.funding_index,
+                                                                    to_date=pay_date,
+                                                                    gradient=gradient,
+                                                                    scaler=scale,
+                                                                    accumulate=True,
+                                                                )
+                #(2) dF term
+                if isinstance(child_product, ProductIborCashflow):
+                    start = child_product.accrualStart
+                    end = child_product.accrualEnd
+                    child_accrualFactor = float(child_product.accrualFactor)
+                    dFactor = float(self.model.discountFactor(self.funding_index, pay_date))
+
+                    forward_scaler = float(scaler) * dFactor * child_product_sign * child_product.notional * child_accrualFactor
+                    self.model.forwardRateGradientWrtModelParameters(index= child_product.index,
+                                                                  start_time = start,
+                                                                  end_time = end,
+                                                                  gradient = gradient,
+                                                                  scaler = forward_scaler,
+                                                                  accumulate = True)
+                
+                elif isinstance(child_product, ProductOvernightIndexCashflow):
+                    start = child_product.effectiveDate
+                    end = child_product.terminationDate
+                    start_star = max(self.model.valueDate, start)
+                    if start_star < end:
+                        accrual_stub = float(accrued(start_star, end))
+                        is_compound = str(child_product.compounding).upper() == "COMPOUND"
+                        compoundFactor = getattr(eng, "_compound_factor", 1.0)
+                        compounding_parameter = (float(compoundFactor) * accrual_stub) if is_compound else accrual_stub
+                        dFactor = float(self.model.discountFactor(self.funding_index, pay_date))
+
+                        forward_scaler = float(scaler) * dFactor * child_product_sign * child_product.notional * compounding_parameter
+                        self.model.forwardRateGradientWrtModelParameters(index= child_product.index,
+                                                                  start_time = start_star,
+                                                                  end_time = end,
+                                                                  gradient = gradient,
+                                                                  scaler = forward_scaler,
+                                                                  accumulate = True)
+                        
+        self.firstOrderRisk_ = self.model.getGradientArray()
 
 
 # register for both IBOR and OIS swaps

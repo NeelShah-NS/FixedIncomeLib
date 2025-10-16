@@ -81,6 +81,13 @@ class SabrModel(Model):
         nv_comp = self.components[nv_key]
         return (*params, nv_comp.shift, nv_comp.vol_decay_speed)
     
+    def jacobian(self):
+        """
+        Temporary - Returns an empty Jacobian
+        """
+        J = 0
+        return J
+    
     @property
     def subModel(self):
         return self._subModel
