@@ -1,6 +1,6 @@
 # FixedIncomeLib
 
-**FixedIncomeLib** is a library for end‑to‑end fixed‑income analytics. It covers everything from raw market data ingestion through yield‑curve calibration to SABR‐based volatility modeling and instrument valuation.
+**FixedIncomeLib** is a library for end‑to‑end fixed‑income analytics. It covers everything from raw market data ingestion through yield‑curve calibration to SABR‐based volatility modeling and instrument valuation and risk calculation.
 
 ---
 
