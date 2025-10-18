@@ -51,17 +51,14 @@ Issues = "https://github.com/NYU-QuantLab/FixedIncomeLib/issues"
 [tool.setuptools]
 include-package-data = true
 
-# Discover the package at the repo root and all its subpackages
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["fixedincomelib", "fixedincomelib.*"]
 exclude = ["tests*", "demo*", "notebooks*", "notes*", "docs*"]
 
-# Ship CSVs (e.g., fixings) and typing marker if present
 [tool.setuptools.package-data]
 "fixedincomelib" = ["fixings/*.csv", "data/*.csv", "py.typed"]
 
-# ---- Tooling (optional but handy) ----
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
