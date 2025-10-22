@@ -57,7 +57,7 @@ include = ["fixedincomelib", "fixedincomelib.*"]
 exclude = ["tests*", "demo*", "notebooks*", "notes*", "docs*"]
 
 [tool.setuptools.package-data]
-"fixedincomelib" = ["fixings/*.csv", "data/*.csv", "py.typed"]
+"fixedincomelib" = ["**/*.json","**/*.csv","py.typed"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
