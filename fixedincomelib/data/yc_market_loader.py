@@ -14,9 +14,14 @@ def _axis_future(col: pd.Series) -> list[tuple[str, str]]:
 def _axis_swap(col: pd.Series) -> list[str]:
     return [str(x).strip().upper() for x in col]
 
+def _axis_date(col: pd.Series) -> list[str]:
+    return [str(x).strip() for x in col]
+
 _AX_BUILDERS = {
-    "RFR FUTURE": _axis_future,
-    "RFR SWAP":   _axis_swap,
+    "RFR FUTURE":  _axis_future,  # still pair
+    "RFR SWAP":    _axis_swap,
+    "IBOR FUTURE": _axis_date,    # single date
+    "IBOR SWAP":   _axis_swap,
 }
 
 def build_yc_data_collection(market_df: pd.DataFrame):

@@ -31,10 +31,7 @@ def build_yc_calibration_basket(*, value_date: str, data_objs: Iterable) -> Cali
             ))
     return basket
 
-
-# ---------------------------------------------------------------------------
 # Helpers to build a basket directly from DataCollection using the build method
-# ---------------------------------------------------------------------------
 def _collect_data1d_from_dc(dc: DataCollection, instruments: Iterable[str]) -> List[Data1D]:
     wanted = {str(x).strip().upper() for x in instruments}
     found: List[Data1D] = []

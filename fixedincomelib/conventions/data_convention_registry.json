@@ -3,10 +3,11 @@
     "kind": "RFR SWAP",
     "index": "SOFR-1B",
     "accrual_basis": "ACT/360",
-    "accrual_period": "1Y",
-    "payment_offset": "2B",
+    "float_accrual_period": "1Y",
+    "fixed_accrual_period": "1Y",
+    "payment_offset": "0B",
     "payment_biz_day_conv": "F",
-    "payment_hol_conv": "USGS",
+    "payment_hol_conv": "SOFR",
     "ois_compounding": "COMPOUND"
   },
   "SOFR-FUTURE-3M": {
@@ -14,7 +15,27 @@
     "index": "SOFR-1B",
     "accrual_basis": "ACT/360",
     "accrual_period": "3M",
-    "payment_offset": "2B",
+    "payment_offset": "0B",
+    "payment_biz_day_conv": "F",
+    "payment_hol_conv": "SOFR",
+    "compounding": "COMPOUND"
+  },
+  "USD-LIBOR-IRS-3M": {
+    "kind": "IBOR SWAP",
+    "index": "USD-LIBOR-BBA-3M",
+    "accrual_basis": "ACT/360",
+    "float_accrual_period": "3M",
+    "fixed_accrual_period": "6M",
+    "payment_offset": "0B",
+    "payment_biz_day_conv": "F",
+    "payment_hol_conv": "USGS"
+  },
+  "USD-LIBOR-FUTURE-3M": {
+    "kind": "IBOR FUTURE",
+    "index": "USD-LIBOR-BBA-3M",
+    "accrual_basis": "ACT/360",
+    "accrual_period": "3M",
+    "payment_offset": "0B",
     "payment_biz_day_conv": "F",
     "payment_hol_conv": "USGS"
   }

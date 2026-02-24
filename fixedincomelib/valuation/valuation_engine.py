@@ -19,8 +19,7 @@ class ValuationEngine(metaclass=ABCMeta):
     def calculateValue(self):
         return
     
-    # this should be mandatory as well, @abstractmethod
-    # TODO
+    @abstractmethod
     def calculateFirstOrderRisk(self,
                                 gradient=None,
                                 scaler: float = 1.0,

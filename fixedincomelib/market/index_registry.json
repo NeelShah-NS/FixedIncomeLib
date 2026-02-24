@@ -1,5 +1,6 @@
 {
     "USD-LIBOR-BBA": "USDLibor",
+    "SOFR":          "Sofr",
     "SOFR-1B":       "Sofr",
     "FF-1B":         "FedFunds",
     "GBP-LIBOR-BBA": "GBPLibor",

@@ -35,19 +35,32 @@ class DataConvention:
 @dataclass(frozen=True, slots=True)
 class DataConventionRFRSwap(DataConvention):
     ois_compounding: str = "COMPOUND"
+    fixed_accrual_period: str = "1Y"
+    float_accrual_period: str = "1Y"
 
 @dataclass(frozen=True, slots=True)
 class DataConventionRFRFuture(DataConvention):
+    compounding: str = "COMPOUND"
+
+@dataclass(frozen=True, slots=True)
+class DataConventionIborSwap(DataConvention):
+    fixed_accrual_period: str = "6M"
+    float_accrual_period: str = "3M"
+
+@dataclass(frozen=True, slots=True)
+class DataConventionIborFuture(DataConvention):
     pass
 
 BuilderFn = Callable[[Dict[str, Any], Dict[str, Any]], DataConvention]
 
 class DataConventionRegistry:
     _instance: "DataConventionRegistry" | None = None
-    _REQUIRED_BASE = ("index","accrual_basis","accrual_period","payment_offset","payment_biz_day_conv","payment_hol_conv")
+    _REQUIRED_BASE = ("index","accrual_basis","payment_offset","payment_biz_day_conv","payment_hol_conv")
     _DISPATCH: Dict[str, BuilderFn] = {
-        "RFR SWAP":   lambda base, p: DataConventionRFRSwap(**base, ois_compounding=p.get("ois_compounding","COMPOUND")),
-        "RFR FUTURE": lambda base, p: DataConventionRFRFuture(**base),
+        "RFR SWAP":   lambda base, p: DataConventionRFRSwap(**base, ois_compounding=p.get("ois_compounding","COMPOUND"), fixed_accrual_period=p.get("fixed_accrual_period", p.get("accrual_period", base.get("accrual_period", "1Y"))), float_accrual_period=p.get("float_accrual_period", p.get("accrual_period", base.get("accrual_period", "1Y")))),
+        "RFR FUTURE": lambda base, p: DataConventionRFRFuture(**base, compounding= p.get("compounding","COMPOUND")),
+        "IBOR SWAP":   lambda base, p: DataConventionIborSwap(**base, fixed_accrual_period=p.get("fixed_accrual_period", p.get("accrual_period", base.get("accrual_period", "6M"))), float_accrual_period=p.get("float_accrual_period", p.get("accrual_period", base.get("accrual_period", "3M")))),
+        "IBOR FUTURE": lambda base, p: DataConventionIborFuture(**base),
     }
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -76,11 +89,15 @@ class DataConventionRegistry:
             if not kind: raise ValueError(f"[{source} :: {unique_name}] Missing 'kind'")
             missing = [k for k in self._REQUIRED_BASE if k not in payload]
             if missing: raise ValueError(f"[{source} :: {unique_name}] Missing: {missing}")
+            if kind in ("RFR FUTURE", "IBOR FUTURE"):
+                if "accrual_period" not in payload:
+                    raise ValueError(f"[{source} :: {unique_name}] Future requires 'accrual_period'")
+            
             base_kwargs = dict(
                 unique_name=unique_name,
                 index_key=payload["index"],
                 accrual_basis=payload["accrual_basis"],
-                accrual_period=payload["accrual_period"],
+                accrual_period=payload.get("accrual_period",""),
                 payment_offset=payload["payment_offset"],
                 payment_biz_day_conv=payload["payment_biz_day_conv"],
                 payment_hol_conv=payload["payment_hol_conv"],

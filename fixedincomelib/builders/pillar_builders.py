@@ -1,15 +1,15 @@
 from typing import List, Tuple
 import numpy as np
-from fixedincomelib.date import Date, accrued
+from fixedincomelib.date import Date
 
 def anchor_date(product) -> Date:
     return product.lastDate
 
-def build_anchor_pillars(items: List, value_date: Date) -> Tuple[List[Date], List[float], List]:
+def build_anchor_pillars(items: List, value_date: Date, day_counter) -> Tuple[List[Date], List[float], List]:
     candidates = []
     for basket_item in items:
         anchor_dt = anchor_date(basket_item.product)
-        t_anchor  = float(accrued(value_date, anchor_dt))
+        t_anchor  = float(day_counter.yearFraction(Date(value_date), Date(anchor_dt)))
         candidates.append((t_anchor, int(anchor_dt.serialNumber()), anchor_dt, basket_item))
     candidates.sort(key=lambda x: (x[0], x[1]))
 

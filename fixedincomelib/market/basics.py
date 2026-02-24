@@ -12,8 +12,10 @@ class BusinessDayConvention:
             self.value_ = ql.ModifiedFollowing
         elif input.upper() == 'F':
             self.value_ = ql.Following
-        elif input.upper() == 'P' or input.upper() == 'NONE':
+        elif input.upper() == 'P':
             self.value_ = ql.Preceding
+        elif input.upper() == 'NONE':
+            self.value_ = ql.Unadjusted
         else:
             raise Exception(input + ' is not current supported business day convention.')
 
@@ -27,6 +29,8 @@ class HolidayConvention:
         self.value_ = ql.NullCalendar()
         if input.upper() == 'NYC':
             self.value_ = ql.UnitedStates(ql.UnitedStates.LiborImpact)
+        elif input.upper() == 'SOFR':
+            self.value_ = ql.UnitedStates(ql.UnitedStates.SOFR)
         elif input.upper() == 'USGS':
             self.value_ = ql.UnitedStates(ql.UnitedStates.FederalReserve) # not sure
         elif input.upper() == 'LON':

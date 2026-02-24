@@ -7,9 +7,7 @@ from typing import List, Optional, Union
 from fixedincomelib.date.utilities import makeSchedule,accrued
 from fixedincomelib.product.portfolio import ProductPortfolio
 
-# -------------------------
 # Atomic Cash-Flow Classes
-# -------------------------
 
 class ProductBulletCashflow(Product):
     prodType = "ProductBulletCashflow"
@@ -78,7 +76,7 @@ class ProductIborCashflow(Product):
     
     @property
     def accrualFactor(self) -> float:
-        return accrued(self.accrualStart_, self.accrualEnd_)
+        return float(self.iborIndex_.dayCounter().yearFraction(self.accrualStart_, self.accrualEnd_))
     
     @property
     def paymentDate(self) -> Date:
@@ -181,12 +179,12 @@ class ProductFuture(Product):
         self.expirationDate_ = Date(self.index_.fixingDate(self.effectiveDate_))
         self.maturityDate_ = Date(self.index_.maturityDate(self.effectiveDate_))
 
-         # contractual size override vs. actual accrual
+        # contractual size override vs. actual accrual
         self.contractualSize_ = contractualSize
         if contractualSize is not None:
             self.accrualFactor_ = contractualSize
         else:
-            self.accrualFactor_ = accrued(self.effectiveDate_, self.maturityDate_)
+            self.accrualFactor_ = float(self.index_.dayCounter().yearFraction(self.effectiveDate_, self.maturityDate_))
         
         super().__init__(self.effectiveDate_, self.maturityDate_, notional, longOrShort, Currency(self.index_.currency().code()))
      
@@ -256,8 +254,8 @@ class ProductRfrFuture(Product):
         if contractualSize is not None:
             self.accrualFactor_ = contractualSize
         else:
-            # uses your accrued() util to compute year‐fraction
-            self.accrualFactor_ = accrued(self.effDate_, self.maturityDate_)
+            day_counter = self.oisIndex_.dayCounter()
+            self.accrualFactor_ = float(day_counter.yearFraction(self.effDate_, self.maturityDate_))
 
         super().__init__(self.effDate_, self.maturityDate_, self.notional_, longOrShort, Currency(self.oisIndex_.currency().code()))
 
@@ -292,9 +290,7 @@ class ProductRfrFuture(Product):
     def accept(self, visitor: ProductVisitor):
         return visitor.visit(self)
     
-# --------------------------------
 # Composition: Streams & Swaps
-# --------------------------------
 
 class InterestRateStream(ProductPortfolio):
 
@@ -304,6 +300,7 @@ class InterestRateStream(ProductPortfolio):
         endDate: str,
         frequency: str,
         iborIndex: Optional[str]       = None,
+        iborSpread: float              = 0.0,
         overnightIndex: Optional[str]  = None,
         fixedRate: Optional[float]     = None,
         ois_compounding: str           = "COMPOUND",
@@ -311,30 +308,39 @@ class InterestRateStream(ProductPortfolio):
         notional: float                = 1.0,
         position: str                  = 'LONG',
         currency: str                  = 'USD',
-        holConv: str                   = 'TARGET',
-        bizConv: str                   = 'MF',
-        accrualBasis: str              = 'ACT/365 FIXED',
+        holConv: str                   = 'SOFR',
+        bizConv: str                   = 'F',
+        accrualBasis: str              = 'ACT/360',
         rule: str                      = 'BACKWARD',
         endOfMonth: bool               = False
     ):
-
-        # calendar    = HolidayConvention(holConv).value
-        # bdc         = BusinessDayConvention(bizConv).value
-        # dayCounter  = AccrualBasis(accrualBasis).value
 
         schedule = makeSchedule(startDate, endDate, frequency, holConv, bizConv, accrualBasis, rule, endOfMonth)
         prods, weights = [], []
         for row in schedule.itertuples(index=False):
             if iborIndex:
-                cf = ProductIborCashflow(Date(row.StartDate), Date(row.EndDate), iborIndex, 0.0, notional, position, Date(row.PaymentDate))
+                start = Date(row.StartDate)
+
+                toks = iborIndex.split('-')
+                tenor = toks[-1]                 
+                base  = '-'.join(toks[:-1])      
+                idx   = IndexRegistry().get(base, tenor)
+
+                cal = idx.fixingCalendar()
+                bdc = idx.businessDayConvention()
+
+                end = Date(cal.advance(start, Period(tenor), bdc))   
+                cf = ProductIborCashflow(start, end, iborIndex, iborSpread, notional, position, paymentDate=end)
             elif overnightIndex:
                 cf = ProductOvernightIndexCashflow(Date(row.StartDate), Date(row.EndDate), overnightIndex, ois_compounding, ois_spread, notional, position, Date(row.PaymentDate))
             else:
-                alpha_i = accrued(Date(row.StartDate), Date(row.EndDate))
+                dayCounter = AccrualBasis(accrualBasis).value
+                alpha_i = float(dayCounter.yearFraction(Date(row.StartDate), Date(row.EndDate)))
                 coupon_amt = notional * (fixedRate or 0.0) * alpha_i
                 cf = ProductBulletCashflow(Date(row.EndDate), currency, coupon_amt, position, Date(row.PaymentDate))
             prods.append(cf)
             weights.append(1.0)
+    
 
         super().__init__(prods, weights)
 
@@ -348,15 +354,16 @@ class ProductIborSwap(Product):
         self,
         effectiveDate: str,
         maturityDate: str,
-        frequency: str,
+        fixedFrequency: str,
         iborIndex: str,
         spread: float,
         fixedRate: float,
         notional: float,
         position: str,
-        holConv: str      = 'TARGET',
-        bizConv: str      = 'MF',
-        accrualBasis: str = 'ACT/365 FIXED',
+        floatFrequency: Optional[str] = None,
+        holConv: str      = 'USGS',
+        bizConv: str      = 'F',
+        accrualBasis: str = 'ACT/360',
         rule: str         = 'BACKWARD',
         endOfMonth: bool  = False
     ) -> None:
@@ -366,11 +373,15 @@ class ProductIborSwap(Product):
         self.payFixed_    = (position.upper() == 'SHORT')
         float_position = "LONG" if self.payFixed_ else "SHORT"
 
+        if floatFrequency is None:
+            floatFrequency = iborIndex.split('-')[-1]
+
         self.floatingLeg = InterestRateStream(
             startDate      = effectiveDate,
             endDate        = maturityDate,
-            frequency      = frequency,
+            frequency      = floatFrequency,
             iborIndex      = iborIndex,
+            iborSpread     = spread,
             overnightIndex = None,
             fixedRate      = None,
             notional       = notional,
@@ -385,7 +396,7 @@ class ProductIborSwap(Product):
         self.fixedLeg = InterestRateStream(
             startDate      = effectiveDate,
             endDate        = maturityDate,
-            frequency      = frequency,
+            frequency      = fixedFrequency,
             iborIndex      = None,
             overnightIndex = None,
             fixedRate      = fixedRate,
@@ -447,31 +458,34 @@ class ProductOvernightSwap(Product):
         self,
         effectiveDate: str,
         maturityDate: str,
-        frequency: str,
+        fixedFrequency: str,
         overnightIndex: str,
         spread: float,
         fixedRate: float,
         notional: float,
         position: str,
-        holConv: str      = 'TARGET',
-        bizConv: str      = 'MF',
-        accrualBasis: str = 'ACT/365 FIXED',
+        floatFrequency: Optional[str] = None,
+        holConv: str      = 'SOFR',
+        bizConv: str      = 'F',
+        accrualBasis: str = 'ACT/360',
         rule: str         = 'BACKWARD',
-        endOfMonth: bool  = False
+        endOfMonth: bool  = False,
     ) -> None:
         
         self.overnightIndexKey = overnightIndex
         self.fixedRate_        = fixedRate
         self.payFixed_         = (position.upper() == 'SHORT')
-        float_position = "LONG" if self.payFixed_ else "SHORT"
+        float_position         = "LONG" if self.payFixed_ else "SHORT"
 
         self.floatingLeg = InterestRateStream(
             startDate      = effectiveDate,
             endDate        = maturityDate,
-            frequency      = frequency,
+            frequency      = floatFrequency,
             iborIndex      = None,
             overnightIndex = overnightIndex,
             fixedRate      = None,
+            ois_compounding= "COMPOUND",
+            ois_spread     = spread,  
             notional       = notional,
             position       = float_position,
             holConv        = holConv,
@@ -484,7 +498,7 @@ class ProductOvernightSwap(Product):
         self.fixedLeg = InterestRateStream(
             startDate      = effectiveDate,
             endDate        = maturityDate,
-            frequency      = frequency,
+            frequency      = fixedFrequency,
             iborIndex      = None,
             overnightIndex = None,
             fixedRate      = fixedRate,
